@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { UploadCloud, FileText, CheckCircle2, Loader2, RefreshCw, Trash2, AlertCircle, Download } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle2, Loader2, RefreshCw, Trash2, AlertCircle, Download, CreditCard } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,12 +22,84 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DataIntegrationsGrid } from './components/DataIntegrationsGrid';
+import { useDocumentStream } from '@/hooks/useDocumentStream';
 
 const categoryConfig: Record<string, { label: string, color: string }> = {
   'expectation': { label: 'População', color: 'bg-emerald-100 text-emerald-800 border-transparent' },
   'candidate': { label: 'Material do Candidato', color: 'bg-cyan-600 text-white font-medium border-transparent' },
   'database': { label: 'Base Matemática', color: 'bg-indigo-500 text-white font-medium border-transparent' }
 };
+
+function StatusCell({ doc, onComplete, onConfirmBilling }: { doc: any, onComplete: () => void, onConfirmBilling: (id: number) => void }) {
+  const stream = useDocumentStream(doc.id, doc.status);
+  const hasCompleted = useRef(false);
+
+  useEffect(() => {
+    // 1. Houver transição real para ready ou error
+    // 2. O documento já não estivesse concluído antes do SSE
+    // 3. A trava do useRef garante execução singular
+    if ((stream.status === 'ready' || stream.status === 'error') && doc.status !== 'ready' && doc.status !== 'error') {
+      if (!hasCompleted.current) {
+        hasCompleted.current = true;
+        onComplete();
+      }
+    }
+  }, [stream.status, doc.status]); // onComplete totalmente fora das dependências!
+
+  const currentStatus = stream.status !== 'idle' ? stream.status : doc.status;
+
+  if (currentStatus === 'error') {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger><Badge variant="destructive" className="flex items-center gap-1 cursor-help"><AlertCircle className="w-3 h-3" /> Erro de Indexação</Badge></TooltipTrigger>
+          <TooltipContent className="bg-destructive text-destructive-foreground max-w-xs p-2">
+            <p className="text-xs font-mono">{doc.error_message || "Falha intermitente na Leitura da IA"}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  if (currentStatus === 'ready') {
+    return <Badge className="bg-emerald-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Armazenado na Memória</Badge>;
+  }
+
+  if (currentStatus === 'pending_approval') {
+    return (
+      <div className="flex flex-col gap-2 p-2 border border-amber-200 bg-amber-50 rounded-md">
+        <span className="text-xs font-medium text-amber-800 flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" /> Taxa de Ingestão: R$ {doc.estimated_cost_brl?.toFixed(2)}
+        </span>
+        <span className="text-[10px] text-amber-700/80">O volume de imagens excede a cota grátis.</span>
+        {/* Você pode usar a prop isConfirmingId do pai aqui para o disabled se quiser */}
+        <Button size="sm" onClick={() => onConfirmBilling(doc.id)} className="h-7 text-[10px] bg-amber-500 hover:bg-amber-600">
+          <CreditCard className="w-3 h-3 mr-1" /> Autorizar Cobrança
+        </Button>
+      </div>
+    );
+  }
+
+  if (currentStatus === 'processing' || currentStatus === 'uploaded') {
+    return (
+      <div className="w-[200px] flex flex-col gap-1.5 p-1">
+        <div className="flex justify-between text-[10px] font-mono font-medium text-primary">
+          <span className="truncate pr-2" title={stream.msg}>{stream.msg || "Iniciando processamento..."}</span>
+          <span>{stream.percentage}%</span>
+        </div>
+        <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+          <div
+            className="h-full bg-amber-500 transition-all duration-300 ease-out"
+            style={{ width: `${stream.percentage}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return <Badge variant="outline">{currentStatus}</Badge>;
+}
+
 
 export function Inbound() {
   const [isDragging, setIsDragging] = useState(false);
@@ -60,21 +132,8 @@ export function Inbound() {
     return () => controller.abort();
   }, [uploadStatus]);
 
-  // 2. Controlled Polling Logic
-  useEffect(() => {
-    const hasProcessingDocs = documents.some(d => d.status === 'processing' || d.status === 'uploaded');
-    if (!hasProcessingDocs) return;
-
-    const controller = new AbortController();
-    const interval = setInterval(() => {
-      fetchDocuments(controller.signal);
-    }, 5000);
-
-    return () => {
-      clearInterval(interval);
-      controller.abort();
-    };
-  }, [documents]);
+  // Remover setInterval (Polling obsoleto)
+  // O SSE no StatusCell vai lidar com os updates de tempo real
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -179,6 +238,34 @@ export function Inbound() {
       setProcessingId(null);
     }
   };
+  // 1. Adicione a trava de loading local
+  const [isConfirmingId, setIsConfirmingId] = useState<number | null>(null);
+
+  // 2. Substitua a função atual
+  const handleConfirmBilling = async (id: number) => {
+    if (isConfirmingId === id) return; // Dropa duplo clique
+
+    setIsConfirmingId(id);
+    addLog(`💳 Solicitando autorização financeira para indexação profunda...`);
+
+    try {
+      await api.post(`/inbound/documents/${id}/confirm_premium_extraction/`, {
+        force_premium_extraction: true
+      });
+
+      addLog("✅ Transação aprovada! Iniciando transcrição multimodal.");
+
+      // O refetch muda o status de 'pending_approval' para 'processing'.
+      // Como a prop muda, o StatusCell re-renderiza, escapa da tela de pagamento
+      // e ativa automaticamente o fluxo do hook de Stream (EventSource).
+      fetchDocuments();
+    } catch (err) {
+      console.error(err);
+      addLog("❌ Falha na autorização financeira.");
+    } finally {
+      setIsConfirmingId(null);
+    }
+  };
 
   const handleDelete = async () => {
     if (!docToDelete) return;
@@ -194,23 +281,7 @@ export function Inbound() {
     }
   };
 
-  const getStatusBadge = (doc: any) => {
-    if (doc.status === 'error') {
-      return (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger><Badge variant="destructive" className="flex items-center gap-1 cursor-help"><AlertCircle className="w-3 h-3" /> Erro de Indexação</Badge></TooltipTrigger>
-            <TooltipContent className="bg-destructive text-destructive-foreground max-w-xs p-2">
-              <p className="text-xs font-mono">{doc.error_message || "Falha intermitente na Leitura da IA"}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      );
-    }
-    if (doc.status === 'ready') return <Badge className="bg-emerald-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Armazenado na Memória</Badge>;
-    if (doc.status === 'processing') return <Badge variant="secondary" className="flex items-center gap-1 text-amber-500 animate-pulse"><Loader2 className="w-3 h-3 animate-spin" /> Processando pela IA...</Badge>;
-    return <Badge variant="outline">{doc.status}</Badge>;
-  };
+
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -372,7 +443,7 @@ export function Inbound() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {getStatusBadge(doc)}
+                      <StatusCell doc={doc} onComplete={fetchDocuments} onConfirmBilling={handleConfirmBilling} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
