@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../../.."
+		},
+		{
+			"path": "../../../../cockpit_gov_mvp/inbound"
+		},
+		{
+			"path": "../../../../cockpit_gov_mvp"
+		}
+	],
+	"settings": {}
+}
