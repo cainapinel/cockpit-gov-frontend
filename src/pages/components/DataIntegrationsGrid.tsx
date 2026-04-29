@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Database, Loader2, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Database, Loader2, RefreshCw, AlertCircle, CheckCircle2, ServerOff } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Integration {
@@ -114,6 +114,20 @@ export function DataIntegrationsGrid() {
 
     if (loading) {
         return <div className="h-40 flex items-center justify-center border border-border rounded-xl bg-card animate-pulse"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground"/></div>;
+    }
+
+    if (integrations.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center py-10 px-4 border-2 border-dashed border-border rounded-xl bg-card/30 text-center transition-all">
+                <div className="p-4 bg-muted/50 rounded-full mb-4">
+                    <ServerOff className="w-8 h-8 text-muted-foreground/60" />
+                </div>
+                <h3 className="text-sm font-semibold mb-2">Nenhum Conector de Dados Disponível</h3>
+                <p className="text-xs text-muted-foreground max-w-sm">
+                    Nenhuma integração externa está ativa ou configurada no banco de dados no momento. As pontes de conexão com TSE e IBGE requerem o provisionamento pelo administrador da plataforma.
+                </p>
+            </div>
+        );
     }
 
     return (
