@@ -4,12 +4,10 @@ import { Users, TrendingUp, AlertTriangle, Activity, ShieldAlert, BadgeDollarSig
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
 import { api } from "@/lib/api"
 import { InteractiveMap } from "@/components/InteractiveMap"
-import Papa from "papaparse"
 export function Dashboard() {
   const [data, setData] = useState<any>(null)
   const [radarData, setRadarData] = useState<any[]>([])
   const [geoData, setGeoData] = useState<any>(null)
-  const [csvData, setCsvData] = useState<any[]>([])
   const [selectedCity, setSelectedCity] = useState<string | null>(null)
   const [selectedCityData, setSelectedCityData] = useState<any>(null)
   const [loadingCity, setLoadingCity] = useState(false)
@@ -31,10 +29,7 @@ export function Dashboard() {
         const geoJson = await geoRes.json()
         setGeoData(geoJson)
 
-        const csvRes = await fetch('/cidades_rj.csv')
-        const csvText = await csvRes.text()
-        const parsedCsv = Papa.parse(csvText, { header: true })
-        setCsvData(parsedCsv.data)
+
 
       } catch(e) { console.error(e) }
       finally { setLoading(false) }
@@ -173,7 +168,6 @@ export function Dashboard() {
              {/* Dynamic Leaflet Map directly wired to states */}
              <InteractiveMap 
                 geoJsonData={geoData} 
-                csvData={csvData}
                 selectedCity={selectedCity}
                 onSelectCity={setSelectedCity} 
              />
