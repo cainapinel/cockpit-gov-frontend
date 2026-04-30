@@ -241,11 +241,19 @@ function DossierTab() {
     setRefreshingId(id);
     setStreamMessage('Conectando ao terminal O.S.I.N.T...');
     try {
-      const response = await fetch(`http://localhost:8000/api/personas/dossiers/${id}/refresh/`, {
+      // Usa a instância centralizada do Axios para resolver a URL de produção
+      // e injetar automaticamente o JWT via interceptor
+      const baseURL = api.defaults.baseURL || '';
+      const token = localStorage.getItem('cockpit_token');
+      const response = await fetch(`${baseURL}/personas/dossiers/${id}/refresh/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
       });
 
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       if (!response.body) throw new Error("No body");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

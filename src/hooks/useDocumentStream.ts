@@ -14,11 +14,16 @@ export function useDocumentStream(documentId: number | null, initialStatus: stri
       return;
     }
 
-    // Usa o baseURL dinâmico já configurado em api.ts
-    const baseURL = api.defaults.baseURL || `http://${window.location.hostname}:8000/api`;
+    // Usa o baseURL dinâmico já configurado em api.ts (resolverá para Railway em produção)
+    const baseURL = api.defaults.baseURL || '';
+    
+    // EventSource não suporta headers customizados (Authorization).
+    // Passamos o token via query param para autenticação SSE.
+    const token = localStorage.getItem('cockpit_token');
+    const authQuery = token ? `?token=${token}` : '';
     
     // Create EventSource
-    const eventSource = new EventSource(`${baseURL}/inbound/documents/${documentId}/stream/`);
+    const eventSource = new EventSource(`${baseURL}/inbound/documents/${documentId}/stream/${authQuery}`);
 
     eventSource.onmessage = (event) => {
       try {
