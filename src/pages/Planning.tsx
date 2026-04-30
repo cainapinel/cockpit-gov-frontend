@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { FileText, Loader2, PlayCircle, Settings, MapPin } from "lucide-react"
+import { FileText, Loader2, PlayCircle, MapPin } from "lucide-react"
 import { api } from "@/lib/api"
-import html2pdf from "html2pdf.js"
-import { marked } from "marked"
+import { useReactToPrint } from "react-to-print"
+import { MarkdownRenderer } from "@/components/MarkdownRenderer"
+import { PrintableBriefing } from "@/components/PrintableBriefing"
 
 type TaskStatus = 'pending' | 'processing' | 'completed' | 'error' | null
 
@@ -24,19 +25,10 @@ const eixosAtuacao = [
   'Emprego e Economia'
 ];
 
-const TOM_VOZ_OPCOES = ["Firme e Resolutivo", "Esperançoso e Acolhedor", "Técnico e Inovador"];
-const OBJETIVOS_FASE = ["Posicionamento Inicial", "Reta Final", "Gestão de Crise", "Apresentação de Propostas"];
 
 
 export function Planning() {
-  const [activeTab, setActiveTab] = useState<'estadual' | 'municipal' | 'comunicacao'>('estadual')
-  const [guidelines, setGuidelines] = useState("Reduzir déficit educacional estrutural nas favelas")
-
-  // State Macro
-  const [macroId, setMacroId] = useState<number | null>(null)
-  const [macroStatus, setMacroStatus] = useState<TaskStatus>(null)
-  const [macroResult, setMacroResult] = useState<string>("")
-  const [macroError, setMacroError] = useState<string>("")
+  const [activeTab, setActiveTab] = useState<'municipal' | 'comunicacao'>('municipal')
 
   // State Local
   const [regionName, setRegionName] = useState("")
@@ -46,21 +38,28 @@ export function Planning() {
   const [localStatus, setLocalStatus] = useState<TaskStatus>(null)
   const [localResult, setLocalResult] = useState<string>("")
   const [localError, setLocalError] = useState<string>("")
+  const [localCustomRequest, setLocalCustomRequest] = useState<string>("")
 
   // State Modals & Exports
-  const [isMacroModalOpen, setIsMacroModalOpen] = useState(false)
   const [isLocalModalOpen, setIsLocalModalOpen] = useState(false)
   const [isRegenAlertOpen, setIsRegenAlertOpen] = useState(false)
   const [isCommModalOpen, setIsCommModalOpen] = useState(false)
 
-  // State Communication
-  const [commObjetivo, setCommObjetivo] = useState(OBJETIVOS_FASE[0])
-  const [commPublico, setCommPublico] = useState("")
-  const [commTom, setCommTom] = useState(TOM_VOZ_OPCOES[0])
+  // State Communication (Briefing de Rua)
+  const [commMunicipio, setCommMunicipio] = useState("")
+  const [commCities, setCommCities] = useState<string[]>([])
   const [commLoading, setCommLoading] = useState(false)
   const [commResult, setCommResult] = useState("")
   const [pastPlaybooks, setPastPlaybooks] = useState<any[]>([])
   const [openPlaybookId, setOpenPlaybookId] = useState<number | null>(null)
+
+  // Refs para impressão (react-to-print)
+  const localPrintRef = useRef<HTMLDivElement>(null)
+  const commPrintRef = useRef<HTMLDivElement>(null)
+
+  // State: Documentos da Biblioteca (Single Source of Truth)
+  const [availableDocs, setAvailableDocs] = useState<{id: number, filename: string}[]>([])
+  const [selectedDocIds, setSelectedDocIds] = useState<number[]>([])
 
   // Fetch Playbooks History
   const fetchPlaybooks = async () => {
@@ -72,9 +71,21 @@ export function Planning() {
     }
   }
 
+  // Fetch available documents from Biblioteca (Inbound) for both Municipal and Comunicação tabs
   useEffect(() => {
+    if (activeTab === 'municipal' || activeTab === 'comunicacao') {
+      // Fetch available documents from Biblioteca (Inbound)
+      api.get('/inbound/documents/').then(res => {
+        const docs = (res.data || []).filter((d: any) => d.status === 'ready');
+        setAvailableDocs(docs.map((d: any) => ({ id: d.id, filename: d.filename })));
+      }).catch(() => {});
+    }
     if (activeTab === 'comunicacao') {
       fetchPlaybooks();
+      // Fetch cities list for the briefing selector
+      api.get('/analytics/cities/').then(res => {
+        setCommCities(res.data.cities || []);
+      }).catch(() => {});
     }
   }, [activeTab]);
 
@@ -89,53 +100,17 @@ export function Planning() {
     }
   }
 
-  // Fetch Session Memory (Persistência)
-  useEffect(() => {
-    const fetchMemory = async () => {
-      try {
-        const macroRes = await api.get('/ai/planos/macro/');
-        if (macroRes.data && macroRes.data.length > 0) {
-          const latestMacro = macroRes.data[0];
-          setMacroId(latestMacro.id);
-          setMacroStatus(latestMacro.status);
-          setMacroResult(latestMacro.content_markdown || "");
-          setGuidelines(latestMacro.guidelines || "Reduzir déficit educacional estrutural nas favelas");
-        }
 
-        // Local state fetching is now exclusively handled by the situational dependency hook below
-      } catch (e) {
-        console.error("No memory found / Error:", e);
-      }
-    };
-    fetchMemory();
-  }, []);
 
-  const handleDownloadPDF = (content: string, title: string) => {
-    // Create a temporary unstyled div to render the clean markdown HTML for PDF tracking without Tailwind UI constraints
-    const cleanHtml = renderMarkdownSimple(content);
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = `
-      <div style="padding: 40px; font-family: Roboto, sans-serif; line-height: 1.6; color: #111;">
-        ${cleanHtml}
-      </div>
-    `;
-
-    // PDF Options via html2pdf library
-    const opt = {
-      margin: 10,
-      filename: `${title.replace(/ /g, '_').toLowerCase()}.pdf`,
-      image: { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
-    };
-
-    html2pdf().set(opt).from(wrapper).save();
-  }
+  // PDF via react-to-print (janela nativa do navegador → Salvar como PDF)
+  const handlePrintLocal = useReactToPrint({ contentRef: localPrintRef });
+  const handlePrintComm = useReactToPrint({ contentRef: commPrintRef });
 
   const handleDownloadDOCX = async (content: string, title: string) => {
     try {
       const response = await api.post('/ai/planos/export/docx/', {
-        content: content
+        content: content,
+        title: title
       }, {
         responseType: 'blob', // Important for grabbing raw binary data in Axios
       });
@@ -156,27 +131,6 @@ export function Planning() {
     }
   }
 
-  const handleDeleteMacro = async () => {
-    if (!macroId) return;
-    if (!window.confirm("Tem certeza que deseja excluir permanentemente todo este Planejamento Estadual da base de dados?")) return;
-
-    try {
-      await api.delete(`/ai/planos/macro/${macroId}/`);
-      setMacroId(null);
-      setMacroStatus(null);
-      setMacroResult("");
-      setIsMacroModalOpen(false);
-      // Reseta também o local como cascata de segurança visual
-      setLocalId(null);
-      setLocalStatus(null);
-      setLocalResult("");
-      setIsLocalModalOpen(false);
-    } catch (e) {
-      console.error("Erro ao apagar Macro", e);
-      alert("Falha de autenticação ou banco de dados ao tentar excluir o plano.");
-    }
-  }
-
   const handleDeleteLocal = async () => {
     if (!localId) return;
     if (!window.confirm("Deseja apagar o desdobramento de " + cityName + "?")) return;
@@ -193,25 +147,8 @@ export function Planning() {
     }
   }
 
-  const startMacroGeneration = async () => {
-    try {
-      setMacroId(null)
-      setMacroStatus('processing')
-      setMacroResult("")
-      setMacroError("")
-      setLocalStatus(null) // Reseta o local
-
-      const res = await api.post('/ai/planos/macro/', { guidelines, title: 'Plano Estadual' })
-      setMacroId(res.data.id)
-    } catch (e) {
-      console.error(e)
-      setMacroStatus('error')
-      setMacroError("Falha ao criar Plano Macro")
-    }
-  }
-
   const startLocalGeneration = async () => {
-    if (!macroId) return
+    if (selectedDocIds.length === 0) return alert("Selecione pelo menos 1 documento da Biblioteca como base.");
     try {
       setLocalId(null)
       setLocalStatus('processing')
@@ -220,11 +157,12 @@ export function Planning() {
 
       const payloadTipo = cityName === "todos" ? "regional" : "municipal";
       const res = await api.post('/ai/planos/local/', {
-        plano_macro: macroId,
         tipo_desdobramento: payloadTipo,
         municipio: cityName,
         regiao: regionName,
-        eixo_atuacao: eixoAtuacao
+        eixo_atuacao: eixoAtuacao,
+        document_ids: selectedDocIds,
+        custom_request: localCustomRequest
       })
       setLocalId(res.data.id)
     } catch (e) {
@@ -234,29 +172,6 @@ export function Planning() {
     }
   }
 
-  // Polling Macro
-  useEffect(() => {
-    let interval: any
-    if (macroId && (macroStatus === 'pending' || macroStatus === 'processing')) {
-      interval = setInterval(async () => {
-        try {
-          const res = await api.get(`/ai/planos/macro/${macroId}/`)
-          const tStatus = res.data.status
-          setMacroStatus(tStatus)
-          if (tStatus === 'completed') {
-            setMacroResult(res.data.content_markdown)
-            clearInterval(interval)
-          } else if (tStatus === 'error') {
-            setMacroError(res.data.content_markdown || "Erro Interno do Engine")
-            clearInterval(interval)
-          }
-        } catch (e) {
-          console.error("Erro no polling macro", e)
-        }
-      }, 3000)
-    }
-    return () => clearInterval(interval)
-  }, [macroId, macroStatus])
 
   // Polling Local
   useEffect(() => {
@@ -331,12 +246,6 @@ export function Planning() {
 
       <div className="flex border-b border-gray-200 mb-6">
         <button
-          onClick={() => setActiveTab('estadual')}
-          className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'estadual' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <Settings className="w-4 h-4" /> Plano Estadual
-        </button>
-        <button
           onClick={() => setActiveTab('municipal')}
           className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'municipal' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
@@ -352,77 +261,48 @@ export function Planning() {
 
       <div className={`grid gap-6 ${activeTab === 'comunicacao' ? 'lg:grid-cols-12' : 'md:grid-cols-2'}`}>
 
-        {/* COLUNA ESQUERDA: PLANO MACRO */}
-        {activeTab === 'estadual' && (
-        <div className="space-y-4">
-          <Card className="h-fit">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2"><Settings className="h-5 w-5" /> 1. Diretrizes do Estado (Plano Macro)</CardTitle>
-              <CardDescription>A IA cruzará essa direção com a Memória Documental Base.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <textarea
-                className="w-full h-24 p-3 text-sm bg-muted rounded-md border focus:ring-1 focus:outline-none placeholder:text-muted-foreground resize-none"
-                placeholder="Ex: Tolerância zero para milícia urbana, foco em choque de ordem..."
-                value={guidelines}
-                onChange={e => setGuidelines(e.target.value)}
-                disabled={macroStatus === 'processing'}
-              />
-            </CardContent>
-            <CardFooter className="pt-0">
-              <button
-                onClick={startMacroGeneration}
-                disabled={macroStatus === 'processing'}
-                className="w-full flex items-center justify-center gap-2 rounded-md bg-primary hover:bg-primary/90 px-4 py-2 text-sm font-medium text-primary-foreground shadow disabled:opacity-50"
-              >
-                {macroStatus === 'processing' ? <><Loader2 className="w-4 h-4 animate-spin" /> Gerando Plano Macro...</> : <><PlayCircle className="w-4 h-4" /> Elaborar Plano Estadual</>}
-              </button>
-            </CardFooter>
-          </Card>
-
-          <Card className="overflow-hidden flex flex-col min-h-[160px] border-dashed border-2">
-            <CardHeader className="bg-muted/10 border-b py-3">
-              <CardTitle className="text-md flex items-center gap-2 text-muted-foreground">
-                <FileText className="w-4 h-4" /> Status do Planejamento
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 flex-1 flex flex-col items-center justify-center relative">
-              {macroStatus === null && (
-                <div className="flex flex-col items-center text-muted-foreground">
-                  <p className="text-sm">Aguardando início do plano.</p>
-                </div>
-              )}
-              {macroStatus === 'processing' && (
-                <div className="flex flex-col items-center text-primary z-10">
-                  <Loader2 className="w-8 h-8 animate-spin mb-4" />
-                  <p className="font-medium animate-pulse text-sm">Minerando Biblioteca Governamental & Gerando Dossiê...</p>
-                </div>
-              )}
-              {macroStatus === 'error' && (
-                <div className="text-destructive text-sm font-mono text-center">[{macroError}] - Operação Abortada.</div>
-              )}
-              {macroStatus === 'completed' && (
-                <button
-                  onClick={() => setIsMacroModalOpen(true)}
-                  className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-8 py-3 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95"
-                >
-                  <FileText className="w-5 h-5" /> 📖 Abrir Dossiê Completo
-                </button>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-        )}
-
         {/* COLUNA DIREITA: PLANO LOCAL */}
         {activeTab === 'municipal' && (
         <div className="space-y-4">
-          <Card className={`h-fit transition-opacity duration-300 ${macroStatus !== 'completed' ? 'opacity-50 pointer-events-none' : ''}`}>
+          <Card className="h-fit">
             <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5" /> 2. Desdobramento Municipal (Ação Local)</CardTitle>
-              <CardDescription>Requer o Plano Macro pronto. Informe cidade e demandas.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5" /> Desdobramento Municipal (Ação Local)</CardTitle>
+              <CardDescription>Selecione documentos da Biblioteca, região, município e eixo para gerar o plano tático.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">📚 Documentos Base (Biblioteca)</label>
+                <div className="max-h-[180px] overflow-y-auto border border-gray-200 rounded-lg bg-gray-50 p-3 space-y-2">
+                  {availableDocs.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">Nenhum documento processado na Biblioteca.</p>
+                  ) : (
+                    availableDocs.map(doc => (
+                      <label key={doc.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-blue-50 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={selectedDocIds.includes(doc.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedDocIds(prev => [...prev, doc.id]);
+                            } else {
+                              setSelectedDocIds(prev => prev.filter(id => id !== doc.id));
+                            }
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700 truncate">{doc.filename}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                {selectedDocIds.length > 0 && (
+                  <span className="text-xs text-blue-600 font-medium mt-1 block">{selectedDocIds.length} documento(s) selecionado(s)</span>
+                )}
+                {selectedDocIds.length === 0 && availableDocs.length > 0 && (
+                  <span className="text-xs text-red-500 font-medium mt-1 block">Selecione pelo menos 1 documento como base.</span>
+                )}
+              </div>
               <select
                 className="w-full p-2 text-sm bg-muted rounded-md border focus:outline-none focus:ring-1"
                 value={regionName}
@@ -461,12 +341,23 @@ export function Planning() {
                   <option key={e} value={e}>{e}</option>
                 ))}
               </select>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">🎯 Diretrizes Específicas / Foco Pontual (Opcional)</label>
+                <textarea
+                  className="w-full h-20 p-3 text-sm bg-gray-50 rounded-lg border border-gray-200 focus:ring-1 focus:ring-blue-500 focus:outline-none placeholder:text-gray-400 resize-none"
+                  placeholder="Ex: Priorizar proposta de reurbanização da orla, focar em geração de emprego via turismo..."
+                  value={localCustomRequest}
+                  onChange={e => setLocalCustomRequest(e.target.value)}
+                  disabled={localStatus === 'processing'}
+                />
+              </div>
             </CardContent>
             <CardFooter className="pt-0">
               {localStatus !== 'completed' && (
                 <button
                   onClick={startLocalGeneration}
-                  disabled={localStatus === 'processing' || !regionName || !cityName || !eixoAtuacao}
+                  disabled={localStatus === 'processing' || !regionName || !cityName || !eixoAtuacao || selectedDocIds.length === 0}
                   className="w-full flex items-center justify-center gap-2 rounded-md bg-secondary hover:bg-secondary/80 text-secondary-foreground px-4 py-2 text-sm font-medium shadow disabled:opacity-50 transition-all active:scale-95"
                 >
                   {localStatus === 'processing' ? <><Loader2 className="w-4 h-4 animate-spin" /> Extrapolando Meta Local...</> : <><PlayCircle className="w-4 h-4" /> ✨ Gerar Novo Plano Tático</>}
@@ -520,53 +411,58 @@ export function Planning() {
         </div>
         )}
 
-        {/* ABA: COMUNICACAO E NARRATIVA */}
+        {/* ABA: BRIEFING DE RUA (HYPER-LOCAL) */}
         {activeTab === 'comunicacao' && (
         <>
         <div className="lg:col-span-4 space-y-4">
           <Card className="h-fit shadow-md">
             <CardHeader className="pb-3 border-b bg-gray-50/50">
-              <CardTitle className="text-xl flex items-center gap-2 text-gray-800"><PlayCircle className="h-5 w-5 text-blue-500" /> Playbook de Comunicação Elevada</CardTitle>
-              <CardDescription>Traduza os planos táticos em narrativa eleitoral engajadora.</CardDescription>
+              <CardTitle className="text-xl flex items-center gap-2 text-gray-800"><MapPin className="h-5 w-5 text-blue-500" /> Briefing de Rua (Hyper-Local)</CardTitle>
+              <CardDescription>Dossiê tático com dados reais, obras e OSINT para agendas de rua.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5 pt-6">
               
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Escopo Base de Dados (Plano Oficial)</label>
-                <select className="w-full p-3 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none">
-                  <option value={macroId || ""}>Plano Estratégico (Macro)</option>
-                  <option value="" disabled>Planos Municipais estarão disponíveis em breve</option>
-                </select>
-                {!macroId && <span className="text-xs text-red-500 font-medium">Você precisa elaborar um Plano Estadual (Macro) primeiro.</span>}
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">📚 Documentos Base (Biblioteca)</label>
+                <div className="max-h-[180px] overflow-y-auto border border-gray-200 rounded-lg bg-gray-50 p-3 space-y-2">
+                  {availableDocs.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">Nenhum documento processado na Biblioteca.</p>
+                  ) : (
+                    availableDocs.map(doc => (
+                      <label key={doc.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-blue-50 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={selectedDocIds.includes(doc.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedDocIds(prev => [...prev, doc.id]);
+                            } else {
+                              setSelectedDocIds(prev => prev.filter(id => id !== doc.id));
+                            }
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700 truncate">{doc.filename}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                {selectedDocIds.length > 0 && (
+                  <span className="text-xs text-blue-600 font-medium mt-1 block">{selectedDocIds.length} documento(s) selecionado(s)</span>
+                )}
+                {selectedDocIds.length === 0 && availableDocs.length > 0 && (
+                  <span className="text-xs text-red-500 font-medium mt-1 block">Selecione pelo menos 1 documento como base.</span>
+                )}
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Fase / Objetivo da Campanha</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">🏙️ Município Alvo da Agenda</label>
                 <select 
                   className="w-full p-3 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
-                  value={commObjetivo} onChange={e => setCommObjetivo(e.target.value)}
+                  value={commMunicipio} onChange={e => setCommMunicipio(e.target.value)}
                 >
-                  {OBJETIVOS_FASE.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Público-Alvo Específico</label>
-                <input 
-                  type="text"
-                  placeholder="Ex: Jovens das periferias e mães chefes de família"
-                  className="w-full p-3 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
-                  value={commPublico} onChange={e => setCommPublico(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Tom de Voz da Narrativa</label>
-                <select 
-                  className="w-full p-3 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
-                  value={commTom} onChange={e => setCommTom(e.target.value)}
-                >
-                  {TOM_VOZ_OPCOES.map(o => <option key={o} value={o}>{o}</option>)}
+                  <option value="" disabled>Selecione o município</option>
+                  {commCities.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
 
@@ -574,29 +470,27 @@ export function Planning() {
             <CardFooter className="bg-gray-50/50 border-t p-6">
               <button
                 onClick={async () => {
-                  if(!macroId || !commPublico.trim()) return alert("Preencha Público Alvo e vincule um escopo.");
+                  if(!commMunicipio.trim() || selectedDocIds.length === 0) return alert("Selecione documentos e um município alvo.");
                   setCommLoading(true);
                   try {
                     const res = await api.post('/ai/planos/communication/generate/', {
-                      escopo_plano: macroId,
-                      objetivo_fase: commObjetivo,
-                      publico_alvo: commPublico,
-                      tom_de_voz: commTom
+                      municipio_alvo: commMunicipio,
+                      document_ids: selectedDocIds
                     });
                     setCommResult(res.data.content_markdown);
                     setOpenPlaybookId(res.data.id);
                     setIsCommModalOpen(true);
                     fetchPlaybooks();
                   } catch(e: any) {
-                    alert(e.response?.data?.error || "Erro ao gerar Playbook");
+                    alert(e.response?.data?.error || "Erro ao gerar Briefing");
                   } finally {
                     setCommLoading(false);
                   }
                 }}
-                disabled={commLoading || !macroId}
+                disabled={commLoading || !commMunicipio || selectedDocIds.length === 0}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2 text-lg uppercase tracking-wide"
               >
-                {commLoading ? <><Loader2 className="w-5 h-5 animate-spin" /> Processando Playbook...</> : <>📢 Gerar Playbook de Comunicação</>}
+                {commLoading ? <><Loader2 className="w-5 h-5 animate-spin" /> Gerando Briefing...</> : <>📋 Gerar Briefing de Rua</>}
               </button>
             </CardFooter>
           </Card>
@@ -619,19 +513,18 @@ export function Planning() {
                       <div key={pb.id} className="border border-gray-200 bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative flex flex-col justify-between h-full min-h-[140px]">
                         <div>
                           <div className="text-xs font-black uppercase tracking-wider text-blue-600 mb-1">{pb.objetivo_fase}</div>
-                          <div className="text-sm font-semibold text-gray-800 line-clamp-2 mb-1" title={pb.publico_alvo}>Alvo: {pb.publico_alvo}</div>
-                          <div className="text-xs text-gray-500 mb-4 bg-gray-100 rounded-md px-2 py-1 inline-block">Tom: {pb.tom_de_voz}</div>
+                          <div className="text-sm font-semibold text-gray-800 line-clamp-2 mb-1">📍 {pb.publico_alvo}</div>
+                          <div className="text-xs text-gray-500 mb-4 bg-gray-100 rounded-md px-2 py-1 inline-block">{pb.tom_de_voz}</div>
                         </div>
                         <div className="flex gap-2 mt-auto">
                            <button onClick={() => {
                               setCommResult(pb.content_markdown);
-                              setCommObjetivo(pb.objetivo_fase);
                               setOpenPlaybookId(pb.id);
                               setIsCommModalOpen(true);
                            }} className="text-sm px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 flex-1 font-bold flex items-center justify-center gap-1 transition-colors">
-                             <FileText className="w-4 h-4"/> Abrir Documento
+                             <FileText className="w-4 h-4"/> Abrir Briefing
                            </button>
-                           <button onClick={() => handleDeletePlaybook(pb.id)} className="text-sm px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors" title="Deletar Playbook">
+                           <button onClick={() => handleDeletePlaybook(pb.id)} className="text-sm px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors" title="Deletar Briefing">
                              🗑️
                            </button>
                         </div>
@@ -649,54 +542,8 @@ export function Planning() {
 
       {/* OVERLAY MODALS */}
 
-      {/* Modal 1: Leitura do Dossiê Macro */}
-      {isMacroModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm shadow-xl animate-in fade-in duration-200">
-          <div className="max-w-4xl w-full bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
-            {/* Header / Action Bar */}
-            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 tracking-tight">
-                <FileText className="w-6 h-6 text-primary" /> Dossiê Direcional: Plano Estadual
-              </h2>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => handleDownloadPDF(macroResult, 'Plano Estadual')}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
-                >
-                  📄 Baixar em PDF
-                </button>
-                <button
-                  onClick={() => handleDownloadDOCX(macroResult, 'Plano Estadual')}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
-                >
-                  📝 Baixar em DOCX
-                </button>
-                <button
-                  onClick={handleDeleteMacro}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-red-300 bg-red-50 text-red-800 hover:bg-red-100 transition-colors"
-                  title="Apagar permanentemente"
-                >
-                  🗑️ Excluir
-                </button>
-                <div className="w-px h-6 bg-gray-200 mx-1"></div>
-                <button
-                  onClick={() => setIsMacroModalOpen(false)}
-                  className="px-5 py-2 text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  Fechar
-                </button>
-              </div>
-            </div>
 
-            <div className="bg-gray-50 p-6 rounded-lg border max-h-[60vh] overflow-y-auto">
-              <div
-                className="markdown-body"
-                dangerouslySetInnerHTML={{ __html: renderMarkdownSimple(macroResult) }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Modal 2: Leitura do Desdobramento Local */}
       {isLocalModalOpen && (
@@ -709,7 +556,7 @@ export function Planning() {
               </h2>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => handleDownloadPDF(localResult, generateModalTitle())}
+                  onClick={() => handlePrintLocal()}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
                 >
                   📄 Baixar em PDF
@@ -738,10 +585,7 @@ export function Planning() {
             </div>
 
             <div className="bg-gray-50 p-6 rounded-lg border max-h-[60vh] overflow-y-auto">
-              <div
-                className="markdown-body"
-                dangerouslySetInnerHTML={{ __html: renderMarkdownSimple(localResult) }}
-              />
+              <MarkdownRenderer content={localResult} />
             </div>
           </div>
         </div>
@@ -787,17 +631,17 @@ export function Planning() {
             {/* Header / Action Bar */}
             <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h2 className="text-xl font-black flex items-center gap-2 text-gray-900 tracking-tight">
-                <PlayCircle className="w-6 h-6 text-blue-500" /> Playbook: {commObjetivo}
+                <MapPin className="w-6 h-6 text-blue-500" /> Briefing de Rua: {commMunicipio || 'Município'}
               </h2>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => handleDownloadPDF(commResult, `Playbook_Comunicacao_${commObjetivo}`)}
+                  onClick={() => handlePrintComm()}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50 transition-colors bg-white shadow-sm"
                 >
                   📄 Baixar em PDF
                 </button>
                 <button
-                  onClick={() => handleDownloadDOCX(commResult, `Playbook_Comunicacao_${commObjetivo}`)}
+                  onClick={() => handleDownloadDOCX(commResult, `Briefing_Rua_${commMunicipio}`)}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors bg-white shadow-sm"
                 >
                   📝 Baixar em DOCX
@@ -813,20 +657,25 @@ export function Planning() {
             </div>
 
             <div className="bg-white p-8 overflow-y-auto custom-scrollbar max-h-[75vh]">
-              <div
-                className="markdown-body prose prose-lg prose-blue max-w-none text-gray-800"
-                dangerouslySetInnerHTML={{ __html: renderMarkdownSimple(commResult) }}
-              />
+              <MarkdownRenderer content={commResult} className="prose prose-lg prose-blue max-w-none text-gray-800" />
             </div>
           </div>
         </div>
       )}
 
+      {/* Componentes invisíveis de impressão (react-to-print) */}
+      <PrintableBriefing
+        ref={localPrintRef}
+        content={localResult}
+        title={`Plano de Ação — ${cityName || 'Municipal'}`}
+      />
+      <PrintableBriefing
+        ref={commPrintRef}
+        content={commResult}
+        title={`Briefing de Rua — ${commMunicipio || 'Município'}`}
+      />
+
     </div>
   )
 }
 
-function renderMarkdownSimple(text: string) {
-  if (!text) return ""
-  return marked.parse(text) as string;
-}

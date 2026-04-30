@@ -4,6 +4,7 @@ import { Users, TrendingUp, AlertTriangle, Activity, ShieldAlert, BadgeDollarSig
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
 import { api } from "@/lib/api"
 import { InteractiveMap } from "@/components/InteractiveMap"
+import ReactMarkdown from 'react-markdown'
 export function Dashboard() {
   const [data, setData] = useState<any>(null)
   const [radarData, setRadarData] = useState<any[]>([])
@@ -86,8 +87,12 @@ export function Dashboard() {
             <TrendingUp className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.approval_rating}%</div>
-            <p className="text-xs text-muted-foreground">+2.1% no último trimestre</p>
+            <div className="text-2xl font-bold">
+              {data.approval_rating != null ? `${data.approval_rating}%` : <span className="text-muted-foreground">N/D</span>}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {data.approval_rating != null ? 'Índice alimentado pela equipe' : 'Alimente via Perfil do Candidato'}
+            </p>
           </CardContent>
         </Card>
         
@@ -108,8 +113,13 @@ export function Dashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.estimated_population}</div>
-            <p className="text-xs text-muted-foreground">Região Metropolitana RJ</p>
+            <div className="text-2xl font-bold">
+              {data.estimated_population && data.estimated_population > 0
+                ? `${(data.estimated_population / 1_000_000).toFixed(1).replace('.', ',')} Milhões`
+                : <span className="text-muted-foreground">N/D</span>
+              }
+            </div>
+            <p className="text-xs text-muted-foreground">Habitantes no Estado do RJ</p>
           </CardContent>
         </Card>
 
@@ -209,8 +219,8 @@ export function Dashboard() {
                     <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
                       <Activity className="w-4 h-4" /> Alerta de Gestão (IA Estratégica)
                     </h4>
-                    <div className="text-sm text-foreground leading-relaxed font-medium whitespace-pre-wrap">
-                      {selectedCityData.alerta_gestao || selectedCityData.resumo_estrategico}
+                    <div className="text-sm text-foreground leading-relaxed font-medium prose prose-sm prose-invert max-w-none">
+                      <ReactMarkdown>{selectedCityData.alerta_gestao || selectedCityData.resumo_estrategico || ''}</ReactMarkdown>
                     </div>
                  </div>
 

@@ -19,6 +19,7 @@ interface ProfileData {
   name: string;
   campaign_region: string;
   master_prompt: string;
+  current_approval_rating: number | null;
   facts: Fact[];
 }
 
@@ -50,6 +51,9 @@ export function CandidateProfile() {
   const [localMasterPrompt, setLocalMasterPrompt] = useState('');
   const [savingMemory, setSavingMemory] = useState(false);
   const [extractingFacts, setExtractingFacts] = useState(false);
+  
+  // Approval Rating State
+  const [localApproval, setLocalApproval] = useState<string>('');
 
   const fetchProfile = async () => {
     try {
@@ -61,6 +65,7 @@ export function CandidateProfile() {
         if (res.data.master_prompt) {
            setLocalMasterPrompt(res.data.master_prompt);
         }
+        setLocalApproval(res.data.current_approval_rating != null ? String(res.data.current_approval_rating) : '');
       } else {
         setProfile(null);
       }
@@ -123,7 +128,8 @@ export function CandidateProfile() {
         await api.post('/personas/candidate-profile/', {
            name: profile?.name,
            campaign_region: profile?.campaign_region,
-           master_prompt: localMasterPrompt
+           master_prompt: localMasterPrompt,
+           current_approval_rating: localApproval.trim() !== '' ? parseFloat(localApproval) : null
         });
         await fetchProfile();
      } catch (e) {
@@ -138,11 +144,12 @@ export function CandidateProfile() {
      setPageError('');
      try {
         // Garantimos que está salvo no banco antes de mandar a IA ler
-        await api.post('/personas/candidate-profile/', {
-           name: profile?.name,
-           campaign_region: profile?.campaign_region,
-           master_prompt: localMasterPrompt
-        });
+         await api.post('/personas/candidate-profile/', {
+            name: profile?.name,
+            campaign_region: profile?.campaign_region,
+            master_prompt: localMasterPrompt,
+            current_approval_rating: localApproval.trim() !== '' ? parseFloat(localApproval) : null
+         });
         
         await api.post('/personas/candidate-profile/process-memory/');
         
@@ -233,6 +240,43 @@ export function CandidateProfile() {
           <p className="text-muted-foreground">
             Base central de inteligência e pontos cegos. ({profile?.campaign_region})
           </p>
+        </div>
+        {/* Índice de Aprovação Inline */}
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">Aprovação Global:</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              className="w-24 bg-background border border-input rounded-md px-3 py-2 text-sm font-bold text-center"
+              placeholder="N/D"
+              value={localApproval}
+              onChange={e => setLocalApproval(e.target.value)}
+            />
+            <span className="text-sm text-muted-foreground">%</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={savingMemory}
+              onClick={async () => {
+                setSavingMemory(true);
+                try {
+                  await api.post('/personas/candidate-profile/', {
+                    name: profile?.name,
+                    campaign_region: profile?.campaign_region,
+                    master_prompt: localMasterPrompt,
+                    current_approval_rating: localApproval.trim() !== '' ? parseFloat(localApproval) : null
+                  });
+                  await fetchProfile();
+                } catch { setPageError('Falha ao salvar aprovação.'); }
+                finally { setSavingMemory(false); }
+              }}
+            >
+              Salvar
+            </Button>
+          </div>
         </div>
       </div>
 

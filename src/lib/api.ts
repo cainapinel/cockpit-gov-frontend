@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// Resolve o backend dinamicamente: usa o mesmo hostname que o browser acessou
+// Ex: se acessou via 192.168.0.22:5173, API vai para 192.168.0.22:8000
+const API_HOST = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000/api`;
+
 export const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: API_HOST,
   timeout: 180000, // 3 minutes timeout for heavy LLM operations
   headers: {
     'Content-Type': 'application/json',

@@ -14,8 +14,8 @@ export function useDocumentStream(documentId: number | null, initialStatus: stri
       return;
     }
 
-    // Default to localhost for development if defaults.baseURL is undefined
-    const baseURL = api.defaults.baseURL || 'http://localhost:8000/api';
+    // Usa o baseURL dinâmico já configurado em api.ts
+    const baseURL = api.defaults.baseURL || `http://${window.location.hostname}:8000/api`;
     
     // Create EventSource
     const eventSource = new EventSource(`${baseURL}/inbound/documents/${documentId}/stream/`);
