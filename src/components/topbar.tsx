@@ -62,7 +62,7 @@ export function TopBar() {
             <AvatarImage src="" alt="Avatar" />
             <AvatarFallback>{displayInitials}</AvatarFallback>
           </Avatar>
-          <Button variant="ghost" size="icon" onClick={logout} title="Sair do Cockpit">
+          <Button variant="ghost" size="icon" onClick={logout} title="Sair da ATHENA">
             <LogOut className="h-5 w-5 text-muted-foreground hover:text-destructive" />
           </Button>
         </div>

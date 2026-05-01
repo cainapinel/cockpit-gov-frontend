@@ -48,11 +48,10 @@ export function Login() {
       {/* Login Container */}
       <Card className="w-full max-w-sm border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl z-10">
         <CardHeader className="space-y-1 text-center pb-8 border-b border-white/5">
-          <div className="mx-auto w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4 border border-white/20">
-            <ShieldAlert className="w-6 h-6 text-primary" />
+          <div className="mx-auto mb-4">
+            <img src="/logo_full_dark.png" alt="ATHENA" className="h-12 w-auto mx-auto" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight text-white">Cockpit Gov</CardTitle>
-          <CardDescription className="text-slate-400">War Room V2. Identificação Coordenação</CardDescription>
+          <CardDescription className="text-slate-400">Identificação de Operador</CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
           <form onSubmit={handleLogin} className="space-y-4">

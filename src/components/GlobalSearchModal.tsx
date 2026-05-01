@@ -90,7 +90,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
           {!query.trim() && (
             <div className="p-8 text-center text-gray-500">
               <Database className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-              <p>Digite para pesquisar em toda a base de dados do Cockpit.</p>
+              <p>Digite para pesquisar em toda a base de dados da ATHENA.</p>
               <div className="flex gap-2 justify-center mt-4">
                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">cmd+k</span> para abrir
                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">esc</span> para fechar
@@ -185,7 +185,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
              <span className="text-xs text-gray-500 flex items-center gap-1"><kbd className="bg-white border rounded px-1 shadow-sm">↑</kbd><kbd className="bg-white border rounded px-1 shadow-sm">↓</kbd> Navegar</span>
              <span className="text-xs text-gray-500 flex items-center gap-1"><kbd className="bg-white border rounded px-1 shadow-sm">↵</kbd> Acessar</span>
           </div>
-          <span className="text-xs font-medium text-gray-400">Cockpit Global Search Engine</span>
+          <span className="text-xs font-medium text-gray-400">ATHENA Search Engine</span>
         </div>
       </div>
     </div>
