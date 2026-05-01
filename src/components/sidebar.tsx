@@ -15,7 +15,7 @@ export function Sidebar({ className }: { className?: string }) {
   return (
     <div className={cn("flex flex-col border-r bg-card text-card-foreground", className)}>
       <div className="p-6">
-        <img src="/logo_full_dark.png" alt="ATHENA" className="h-10 w-auto" />
+        <img src="/logo_full_dark.png" alt="ATHENA" className="h-14 w-auto" />
       </div>
       <nav className="flex-1 space-y-1 px-3 py-4">
         {navigation.map((item) => (

@@ -49,7 +49,7 @@ export function Login() {
       <Card className="w-full max-w-sm border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl z-10">
         <CardHeader className="space-y-1 text-center pb-8 border-b border-white/5">
           <div className="mx-auto mb-4">
-            <img src="/logo_full_dark.png" alt="ATHENA" className="h-12 w-auto mx-auto" />
+            <img src="/logo_full_dark.png" alt="ATHENA" className="h-20 w-auto mx-auto" />
           </div>
           <CardDescription className="text-slate-400">Identificação de Operador</CardDescription>
         </CardHeader>
