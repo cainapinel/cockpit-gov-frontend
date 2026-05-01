@@ -68,20 +68,28 @@ export function DataIntegrationsGrid() {
         try {
             const res = await api.post(`/data_ingestion/integrations/${id}/trigger_sync/`);
             if (res.status === 200) {
-                 setRawErrors(prev => ({...prev, [id]: ''})); // Clean any past errors
-                 fetchIntegrations(); // Garante q busca o state real
+                 setRawErrors(prev => ({...prev, [id]: ''}));
+                 fetchIntegrations();
             }
         } catch (error: any) {
              console.error("Falha a disparar sync", error);
+             const data = error.response?.data;
              
-             // Captura telemetria crua (Visual Debugging)
-             if (error.response?.data?.raw_response) {
-                 setRawErrors(prev => ({...prev, [id]: String(error.response.data.raw_response)}));
-             } else {
-                 alert(error.response?.data?.error || "Falha ao iniciar sincronização.");
+             if (data?.raw_response) {
+                 // Telemetria crua de falha de API externa (Visual Debugging)
+                 setRawErrors(prev => ({...prev, [id]: String(data.raw_response)}));
              }
              
-             fetchIntegrations(); // Reverte UI on error
+             // Exibe mensagem de erro real do backend (ex: "fonte desabilitada", "Falha na API Externa")
+             const errorMsg = data?.error || data?.detail || "Falha ao iniciar sincronização.";
+             setIntegrations(prev => prev.map(i => i.id === id ? {
+                 ...i, 
+                 status: 'error', 
+                 last_error_message: errorMsg
+             } : i));
+             
+             // Re-fetch estado real do backend após 1s
+             setTimeout(fetchIntegrations, 1000);
         }
     };
 
