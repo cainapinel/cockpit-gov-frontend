@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { Bell, Search, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ModeToggle } from "./mode-toggle"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useAuth } from "@/contexts/AuthContext"
 import { GlobalSearchModal } from "./GlobalSearchModal"
@@ -50,7 +49,6 @@ export function TopBar() {
           <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
           <span className="sr-only">Notificações</span>
         </Button>
-        <ModeToggle />
         <div className="flex items-center space-x-2 border-l pl-4 ml-2">
           <div className="flex flex-col text-right">
             <span className="text-sm font-medium leading-none">{displayName}</span>
