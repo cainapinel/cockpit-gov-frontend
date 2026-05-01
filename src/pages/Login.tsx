@@ -4,8 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardFooter } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
 
 export function Login() {
   const [username, setUsername] = useState('');
