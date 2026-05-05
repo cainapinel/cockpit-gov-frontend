@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { UploadCloud, FileText, CheckCircle2, Loader2, RefreshCw, Trash2, AlertCircle, Download, CreditCard } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle2, Loader2, RefreshCw, Trash2, AlertCircle, Download, CreditCard, Eye, FileSpreadsheet, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +29,69 @@ const categoryConfig: Record<string, { label: string, color: string }> = {
   'candidate': { label: 'Material do Candidato', color: 'bg-cyan-600 text-white font-medium border-transparent' },
   'database': { label: 'Base Matemática', color: 'bg-indigo-500 text-white font-medium border-transparent' }
 };
+
+function EmendasUploader() {
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<{ imported?: number; errors?: string[]; message?: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setResult(null);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach(f => formData.append('files', f));
+      const res = await api.post('/inbound/emendas/upload/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setResult(res.data);
+    } catch (err: any) {
+      setResult({ errors: [err?.response?.data?.error || err.message || 'Erro desconhecido'] });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div>
+      <div
+        className="flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer hover:bg-blue-50/50 transition-colors"
+        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+        onDrop={e => { e.preventDefault(); e.stopPropagation(); handleUpload(e.dataTransfer.files); }}
+        onClick={() => fileRef.current?.click()}
+      >
+        {uploading ? (
+          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        ) : (
+          <UploadCloud className="w-8 h-8 text-blue-400" />
+        )}
+        <span className="text-sm text-muted-foreground">
+          {uploading ? 'Importando emendas...' : 'Arraste CSVs aqui ou clique para selecionar'}
+        </span>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv"
+          multiple
+          className="hidden"
+          onChange={e => handleUpload(e.target.files)}
+        />
+      </div>
+      {result && (
+        <div className={`mt-3 p-3 rounded text-sm ${result.errors && result.errors.length > 0 && !result.imported ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+          {result.message && <p className="font-medium">{result.message}</p>}
+          {result.errors && result.errors.length > 0 && (
+            <ul className="mt-1 list-disc list-inside">
+              {result.errors.map((e, i) => <li key={i}>{e}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StatusCell({ doc, onComplete, onConfirmBilling }: { doc: any, onComplete: () => void, onConfirmBilling: (id: number) => void }) {
   const stream = useDocumentStream(doc.id, doc.status);
@@ -112,6 +175,8 @@ export function Inbound() {
   // Modal State
   const [docToDelete, setDocToDelete] = useState<number | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [ragContent, setRagContent] = useState<{ document_id: number, filename: string, total_chunks: number, total_pages: number, page: number, chunks: any[] } | null>(null);
+  const [ragLoading, setRagLoading] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -281,7 +346,47 @@ export function Inbound() {
     }
   };
 
+  const [csvExporting, setCsvExporting] = useState(false);
 
+  const handleExportCsv = async () => {
+    if (csvExporting) return;
+    setCsvExporting(true);
+    try {
+      const res = await api.get('/inbound/documents/export_csv/');
+      const csvText = res.data.csv_content;
+      const bom = '\uFEFF';
+      const blob = new Blob([bom + csvText], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', res.data.filename || 'acervo_documental.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      addLog(`📥 Tabela exportada como CSV (${res.data.total_documents} documentos).`);
+    } catch (err: any) {
+      console.error('Export CSV error:', err);
+      addLog('❌ Falha ao exportar CSV.');
+    } finally {
+      setCsvExporting(false);
+    }
+  };
+
+  const handleViewRag = async (id: number, page: number = 1) => {
+    setRagLoading(id);
+    try {
+      const res = await api.get(`/inbound/documents/${id}/rag_content/`, {
+        params: { page, page_size: 50 }
+      });
+      setRagContent(res.data);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Falha ao carregar conteúdo RAG.';
+      addLog(`❌ ${msg}`);
+    } finally {
+      setRagLoading(null);
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -408,9 +513,44 @@ export function Inbound() {
         <DataIntegrationsGrid />
       </div>
 
+      {/* Upload Emendas Parlamentares (CSV) */}
+      <div className="mt-6 mb-6">
+        <Card className="border-dashed border-2 border-blue-200 bg-blue-50/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+              Emendas Parlamentares — Upload CSV
+            </CardTitle>
+            <CardDescription>
+              Faça upload dos CSVs de emendas parlamentares do <a href="https://portaldatransparencia.gov.br/download-de-dados/emendas" target="_blank" rel="noopener" className="text-blue-600 underline">Portal da Transparência</a>. 
+              O sistema filtra automaticamente as emendas destinadas a municípios do RJ.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <EmendasUploader />
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Histórico Inbound - Tabela RAG Resiliente */}
       <div className="mt-10">
-        <h2 className="text-xl font-semibold mb-4 border-b pb-2">Acervo Documental da IA</h2>
+        <div className="flex items-center justify-between mb-4 border-b pb-2">
+          <h2 className="text-xl font-semibold">Acervo Documental da IA</h2>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={async () => {
+              try {
+                const res = await api.post('/inbound/documents/reset_stuck/');
+                addLog(`🔄 ${res.data.message}`);
+                fetchDocuments();
+              } catch { addLog('❌ Falha ao resetar documentos travados.'); }
+            }} className="flex items-center gap-2 text-amber-500 border-amber-500/30 hover:bg-amber-500/10">
+              <RefreshCw className="h-4 w-4" /> Resetar Travados
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={csvExporting} className="flex items-center gap-2">
+              {csvExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />} {csvExporting ? 'Exportando...' : 'Exportar CSV'}
+            </Button>
+          </div>
+        </div>
         <Card className="border-border bg-card/50">
           <CardContent className="p-0">
             <Table>
@@ -461,6 +601,23 @@ export function Inbound() {
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>Reprocessar Leitura</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8 bg-background border-border hover:bg-accent"
+                                onClick={() => handleViewRag(doc.id)}
+                                disabled={doc.status !== 'ready' || ragLoading === doc.id}
+                              >
+                                {ragLoading === doc.id ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Visualizar Conteúdo RAG</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
 
@@ -531,6 +688,60 @@ export function Inbound() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* RAG Content Viewer */}
+      {ragContent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-[90vw] max-w-4xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <div>
+                <h3 className="text-lg font-bold flex items-center gap-2"><Eye className="h-5 w-5 text-primary" /> Conteúdo Extraído (RAG)</h3>
+                <p className="text-sm text-muted-foreground">{ragContent.filename} — {ragContent.total_chunks} chunks indexados (Página {ragContent.page}/{ragContent.total_pages})</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setRagContent(null)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {ragContent.chunks.map((chunk: any) => (
+                <div key={chunk.index} className="border border-border rounded-lg p-4 bg-background/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="outline" className="text-xs">Chunk #{chunk.index}</Badge>
+                    {chunk.metadata?.page && <span className="text-[10px] text-muted-foreground">Página {chunk.metadata.page}</span>}
+                  </div>
+                  <pre className="text-xs text-foreground/90 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">{chunk.content}</pre>
+                </div>
+              ))}
+              {ragContent.chunks.length === 0 && (
+                <p className="text-center text-muted-foreground italic py-10">Nenhum chunk encontrado no índice vetorial para este documento.</p>
+              )}
+            </div>
+            {ragContent.total_pages > 1 && (
+              <div className="flex items-center justify-between px-6 py-3 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={ragContent.page <= 1 || ragLoading !== null}
+                  onClick={() => handleViewRag(ragContent.document_id, ragContent.page - 1)}
+                >
+                  ← Anterior
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Página {ragContent.page} de {ragContent.total_pages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={ragContent.page >= ragContent.total_pages || ragLoading !== null}
+                  onClick={() => handleViewRag(ragContent.document_id, ragContent.page + 1)}
+                >
+                  Próxima →
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

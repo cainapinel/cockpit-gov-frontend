@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Database, Loader2, RefreshCw, AlertCircle, CheckCircle2, ServerOff } from 'lucide-react';
+import { Database, Loader2, RefreshCw, AlertCircle, CheckCircle2, ServerOff, XCircle, Clock } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Integration {
@@ -14,7 +14,9 @@ interface Integration {
     description: string;
     is_active: boolean;
     last_synced: string | null;
-    status: 'idle' | 'syncing' | 'processing' | 'success' | 'error';
+    sync_started_at: string | null;
+    sync_timeout_seconds: number;
+    status: 'idle' | 'syncing' | 'processing' | 'success' | 'error' | 'cancelled' | 'timeout';
     last_error_message: string | null;
 }
 
@@ -46,7 +48,7 @@ export function DataIntegrationsGrid() {
                 }
                 return prev;
             });
-        }, 5000);
+        }, 3000);
         
         return () => clearInterval(interval);
     }, []);
@@ -64,23 +66,21 @@ export function DataIntegrationsGrid() {
 
     const triggerSync = async (id: number) => {
         // Optimistic UI Update
-        setIntegrations(prev => prev.map(i => i.id === id ? {...i, status: 'syncing'} : i));
+        setIntegrations(prev => prev.map(i => i.id === id ? {...i, status: 'syncing', sync_started_at: new Date().toISOString()} : i));
         try {
             const res = await api.post(`/data_ingestion/integrations/${id}/trigger_sync/`);
             if (res.status === 200) {
                  setRawErrors(prev => ({...prev, [id]: ''}));
-                 fetchIntegrations();
+                 // Polling will pick up the status change
             }
         } catch (error: any) {
              console.error("Falha a disparar sync", error);
              const data = error.response?.data;
              
              if (data?.raw_response) {
-                 // Telemetria crua de falha de API externa (Visual Debugging)
                  setRawErrors(prev => ({...prev, [id]: String(data.raw_response)}));
              }
              
-             // Exibe mensagem de erro real do backend (ex: "fonte desabilitada", "Falha na API Externa")
              const errorMsg = data?.error || data?.detail || "Falha ao iniciar sincronização.";
              setIntegrations(prev => prev.map(i => i.id === id ? {
                  ...i, 
@@ -88,18 +88,37 @@ export function DataIntegrationsGrid() {
                  last_error_message: errorMsg
              } : i));
              
-             // Re-fetch estado real do backend após 1s
              setTimeout(fetchIntegrations, 1000);
         }
     };
 
+    const cancelSync = async (id: number) => {
+        try {
+            await api.post(`/data_ingestion/integrations/${id}/cancel_sync/`);
+            setIntegrations(prev => prev.map(i => i.id === id ? {...i, status: 'cancelled', last_error_message: 'Cancelado pelo usuário.'} : i));
+            setTimeout(fetchIntegrations, 1000);
+        } catch (error: any) {
+            console.error("Falha ao cancelar sync", error);
+        }
+    };
+
+    const getElapsed = (intg: Integration): string | null => {
+        if (intg.status !== 'syncing' || !intg.sync_started_at) return null;
+        const elapsed = Math.floor((Date.now() - new Date(intg.sync_started_at).getTime()) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    };
+
     const getStatusIndicator = (intg: Integration) => {
+        const elapsed = getElapsed(intg);
+        
         if (intg.status === 'error') {
             return (
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <Badge variant="destructive" className="flex items-center gap-1 cursor-help"><AlertCircle className="w-3 h-3"/> Erro de Autenticação</Badge>
+                            <Badge variant="destructive" className="flex items-center gap-1 cursor-help"><AlertCircle className="w-3 h-3"/> Erro</Badge>
                         </TooltipTrigger>
                         <TooltipContent className="bg-destructive max-w-[250px]">
                             {intg.last_error_message || "Falha desconhecida de rede"}
@@ -108,11 +127,29 @@ export function DataIntegrationsGrid() {
                 </TooltipProvider>
             );
         }
+        if (intg.status === 'timeout') {
+            return (
+                <Badge variant="destructive" className="flex items-center gap-1">
+                    <Clock className="w-3 h-3"/> Timeout
+                </Badge>
+            );
+        }
+        if (intg.status === 'cancelled') {
+            return (
+                <Badge variant="secondary" className="flex items-center gap-1 text-orange-500">
+                    <XCircle className="w-3 h-3"/> Cancelado
+                </Badge>
+            );
+        }
         if (intg.status === 'success') {
              return <Badge className="bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30 border-0 flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Sincronizado</Badge>;
         }
         if (intg.status === 'syncing') {
-             return <Badge variant="secondary" className="flex items-center gap-1 text-amber-500 animate-pulse"><Loader2 className="w-3 h-3 animate-spin"/> Conectando API...</Badge>;
+             return (
+                <Badge variant="secondary" className="flex items-center gap-1 text-amber-500 animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin"/> {elapsed ? `Rodando ${elapsed}` : 'Conectando...'}
+                </Badge>
+             );
         }
         if (intg.status === 'processing') {
              return <Badge variant="secondary" className="flex items-center gap-1 text-sky-500 animate-pulse"><Loader2 className="w-3 h-3 animate-spin"/> Traduzindo (IA)...</Badge>;
@@ -172,11 +209,19 @@ export function DataIntegrationsGrid() {
                             <Button 
                                 variant={intg.is_active ? "default" : "secondary"}
                                 className={`w-full text-xs h-9 transition-colors ${!intg.is_active && 'opacity-50'}`}
-                                disabled={!intg.is_active || intg.status === 'syncing' || intg.status === 'processing'}
-                                onClick={() => triggerSync(intg.id)}
+                                disabled={!intg.is_active || intg.status === 'processing'}
+                                onClick={() => {
+                                    if (intg.status === 'syncing') {
+                                        cancelSync(intg.id);
+                                    } else {
+                                        triggerSync(intg.id);
+                                    }
+                                }}
                             >
-                                {(intg.status === 'syncing' || intg.status === 'processing') ? (
-                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Rotina em Execução...</>
+                                {intg.status === 'syncing' ? (
+                                    <><XCircle className="w-3 h-3 mr-2" /> Cancelar Sincronização</>
+                                ) : intg.status === 'processing' ? (
+                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Traduzindo...</>
                                 ) : (
                                     <><RefreshCw className="w-3 h-3 mr-2" /> Forçar Sincronização Agora</>
                                 )}

@@ -5,6 +5,8 @@ import { api } from "@/lib/api"
 import { useReactToPrint } from "react-to-print"
 import { MarkdownRenderer } from "@/components/MarkdownRenderer"
 import { PrintableBriefing } from "@/components/PrintableBriefing"
+import { BriefingPreview } from "@/components/BriefingPreview"
+import type { BriefingStructured } from "@/components/BriefingPreview"
 
 type TaskStatus = 'pending' | 'processing' | 'completed' | 'error' | null
 
@@ -52,6 +54,7 @@ export function Planning() {
   const [commResult, setCommResult] = useState("")
   const [pastPlaybooks, setPastPlaybooks] = useState<any[]>([])
   const [openPlaybookId, setOpenPlaybookId] = useState<number | null>(null)
+  const [commStructured, setCommStructured] = useState<BriefingStructured | null>(null)
 
   // Refs para impressão (react-to-print)
   const localPrintRef = useRef<HTMLDivElement>(null)
@@ -478,6 +481,7 @@ export function Planning() {
                       document_ids: selectedDocIds
                     });
                     setCommResult(res.data.content_markdown);
+                    setCommStructured(res.data.structured_data || null);
                     setOpenPlaybookId(res.data.id);
                     setIsCommModalOpen(true);
                     fetchPlaybooks();
@@ -519,6 +523,7 @@ export function Planning() {
                         <div className="flex gap-2 mt-auto">
                            <button onClick={() => {
                               setCommResult(pb.content_markdown);
+                              setCommStructured(pb.structured_data || null);
                               setOpenPlaybookId(pb.id);
                               setIsCommModalOpen(true);
                            }} className="text-sm px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 flex-1 font-bold flex items-center justify-center gap-1 transition-colors">
@@ -640,12 +645,6 @@ export function Planning() {
                 >
                   📄 Baixar em PDF
                 </button>
-                <button
-                  onClick={() => handleDownloadDOCX(commResult, `Briefing_Rua_${commMunicipio}`)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors bg-white shadow-sm"
-                >
-                  📝 Baixar em DOCX
-                </button>
                 <div className="w-px h-6 bg-gray-200 mx-1"></div>
                 <button
                   onClick={() => setIsCommModalOpen(false)}
@@ -656,8 +655,14 @@ export function Planning() {
               </div>
             </div>
 
-            <div className="bg-white p-8 overflow-y-auto custom-scrollbar max-h-[75vh]">
-              <MarkdownRenderer content={commResult} className="prose prose-lg prose-blue max-w-none text-gray-800" />
+            <div className="bg-gray-100 overflow-y-auto custom-scrollbar max-h-[75vh]">
+              {commStructured ? (
+                <BriefingPreview data={commStructured} editable={true} onDataChange={(d) => setCommStructured(d)} />
+              ) : (
+                <div className="p-8">
+                  <MarkdownRenderer content={commResult} className="prose prose-lg prose-blue max-w-none text-gray-800" />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -673,6 +678,7 @@ export function Planning() {
         ref={commPrintRef}
         content={commResult}
         title={`Briefing de Rua — ${commMunicipio || 'Município'}`}
+        structured={commStructured}
       />
 
     </div>
