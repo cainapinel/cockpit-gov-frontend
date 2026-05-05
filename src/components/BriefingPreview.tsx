@@ -365,127 +365,129 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
               </table>
             )}
 
-            {/* Tabela regional */}
-            {(inv.obras_regiao?.length ?? 0) > 0 && (
-              <div style={{ marginTop: 32 }}>
-                <h4 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Na Região {inv.regiao_nome}:</h4>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "2px solid #1a2332" }}>
-                      <th style={{ ...thStyle, background: "transparent", color: "#1a2332" }}>MUNICÍPIO</th>
-                      <th style={{ ...thStyle, background: "transparent", color: "#1a2332" }}>TIPO DE INTERVENÇÃO</th>
-                      <th style={{ ...thStyle, background: "transparent", color: "#1a2332" }}>STATUS</th>
-                      <th style={{ ...thStyle, background: "transparent", color: "#1a2332" }}>INVESTIMENTO</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inv.obras_regiao?.map((o, i) => (
-                      <tr key={i} style={{ borderBottom: "1px solid #e5e5e5" }}>
-                        <td style={{ ...tdStyle, fontWeight: 700 }} contentEditable={editable} suppressContentEditableWarning>{o.municipio}</td>
-                        <td style={tdStyle} contentEditable={editable} suppressContentEditableWarning>{o.tipo}</td>
-                        <td style={tdStyle} contentEditable={editable} suppressContentEditableWarning>{o.status}</td>
-                        <td style={{ ...tdStyle, fontWeight: 700 }} contentEditable={editable} suppressContentEditableWarning>{o.investimento}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Gráfico de barras regional — investimento por município */}
+            {(inv.chart_investimentos_regiao?.length ?? 0) > 0 && (() => {
+              const chartData = inv.chart_investimentos_regiao!;
+              const maxVal = Math.max(...chartData.map(d => d.valor));
+              const formatBR = (v: number) =>
+                `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-                {/* Total */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    background: "#1a2332",
-                    color: "#fff",
-                    padding: "12px 16px",
-                    fontWeight: 800,
-                    fontSize: 15,
-                    marginTop: 0,
-                  }}
-                >
-                  <span>TOTAL INVESTIDO NA REGIÃO:</span>
-                  <span contentEditable={editable} suppressContentEditableWarning>{inv.total_investido_regiao}</span>
-                </div>
+              // Cores gradiente roxo → azul → teal → verde → olive (como na referência)
+              const barColors = [
+                '#5b3a8c', '#4a4e8a', '#3d6278', '#3a7868', '#4a8a5a',
+                '#5c9c4e', '#6fa844', '#84b23e', '#9abc38', '#b0c632',
+              ];
 
-                {/* Gráfico de barras — investimento por município */}
-                {(inv.chart_investimentos_regiao?.length ?? 0) > 0 && (() => {
-                  const chartData = inv.chart_investimentos_regiao!;
-                  const maxVal = Math.max(...chartData.map(d => d.valor));
-                  const formatBR = (v: number) =>
-                    `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+              // Calcular ticks do eixo X
+              const niceMax = Math.ceil(maxVal / 10_000_000) * 10_000_000;
+              const tickStep = niceMax > 0 ? niceMax / 5 : 10_000_000;
+              const ticks = Array.from({ length: 6 }, (_, i) => i * tickStep);
 
-                  const barColors = [
-                    '#1a73e8', '#0d47a1', '#2196f3', '#42a5f5', '#64b5f6',
-                    '#1565c0', '#1976d2', '#1e88e5', '#2979ff', '#448aff',
-                  ];
+              return (
+                <div style={{ marginTop: 32, border: '1px solid #e0e0e0', borderRadius: 6, padding: '24px 28px 16px', background: '#fff' }}>
+                  {/* Título */}
+                  <h4 style={{ fontSize: 15, fontWeight: 700, textAlign: 'center', margin: '0 0 24px', color: '#1a2332' }}>
+                    Total de Investimento por Município - {inv.regiao_nome}
+                  </h4>
 
-                  return (
-                    <div style={{ marginTop: 28 }}>
-                      <h5 style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, textTransform: 'uppercase', color: '#444' }}>
-                        Investimentos por Município na Região
-                      </h5>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex' }}>
+                    {/* Y-axis label */}
+                    <div style={{
+                      writingMode: 'vertical-rl',
+                      transform: 'rotate(180deg)',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: '#666',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 8,
+                    }}>
+                      Município
+                    </div>
+
+                    {/* Chart area */}
+                    <div style={{ flex: 1 }}>
+                      {/* Bars */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
+                        {/* Grid lines (vertical) */}
+                        {ticks.map((t, i) => (
+                          <div key={`grid-${i}`} style={{
+                            position: 'absolute',
+                            left: `calc(140px + ${(t / niceMax) * (100 - 22)}%)`,
+                            top: 0,
+                            bottom: 0,
+                            width: 1,
+                            background: '#e8e8e8',
+                            zIndex: 0,
+                          }} />
+                        ))}
+
                         {chartData.map((d, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 0, zIndex: 1, minHeight: 32 }}>
+                            {/* Municipality name */}
                             <span style={{
-                              width: 130,
-                              fontSize: 11,
-                              fontWeight: 600,
+                              width: 140,
+                              fontSize: 12,
+                              fontWeight: 500,
                               textAlign: 'right',
+                              paddingRight: 12,
                               flexShrink: 0,
+                              color: '#333',
+                              whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              color: '#333',
                             }}>
                               {d.municipio}
                             </span>
-                            <div style={{ flex: 1, position: 'relative', height: 26 }}>
+                            {/* Bar + value */}
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
                               <div
                                 style={{
-                                  width: `${maxVal > 0 ? (d.valor / maxVal) * 100 : 0}%`,
-                                  minWidth: 2,
-                                  height: '100%',
+                                  width: `${niceMax > 0 ? (d.valor / niceMax) * 100 : 0}%`,
+                                  minWidth: 3,
+                                  height: 28,
                                   background: barColors[i % barColors.length],
-                                  borderRadius: '0 4px 4px 0',
-                                  transition: 'width 0.6s ease',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  paddingLeft: 8,
+                                  borderRadius: '0 3px 3px 0',
                                 }}
-                              >
-                                <span style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  color: '#fff',
-                                  whiteSpace: 'nowrap',
-                                }}>
-                                  {d.valor / maxVal > 0.25 ? formatBR(d.valor) : ''}
-                                </span>
-                              </div>
-                              {d.valor / maxVal <= 0.25 && (
-                                <span style={{
-                                  position: 'absolute',
-                                  left: `${(d.valor / maxVal) * 100 + 2}%`,
-                                  top: '50%',
-                                  transform: 'translateY(-50%)',
-                                  fontSize: 10,
-                                  fontWeight: 600,
-                                  color: '#666',
-                                  whiteSpace: 'nowrap',
-                                }}>
-                                  {formatBR(d.valor)}
-                                </span>
-                              )}
+                              />
+                              <span style={{
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: '#333',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                {formatBR(d.valor)}
+                              </span>
                             </div>
                           </div>
                         ))}
                       </div>
+
+                      {/* X-axis ticks */}
+                      <div style={{ display: 'flex', marginTop: 8, paddingLeft: 140 }}>
+                        {ticks.map((t, i) => (
+                          <span key={i} style={{
+                            flex: i === 0 ? 'none' : 1,
+                            fontSize: 10,
+                            color: '#888',
+                            textAlign: i === 0 ? 'left' : 'right',
+                            width: i === 0 ? 0 : undefined,
+                          }}>
+                            {`R$ ${(t / 1_000_000).toFixed(0)}.000.000`}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* X-axis label */}
+                      <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color: '#666', marginTop: 6, paddingLeft: 140 }}>
+                        Valor Investido (R$)
+                      </div>
                     </div>
-                  );
-                })()}
-              </div>
-            )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* ═══ SEÇÃO 5 — PROPOSTAS (Cross layout) ═══ */}
