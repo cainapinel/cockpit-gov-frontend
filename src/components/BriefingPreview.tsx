@@ -485,6 +485,25 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
                       </div>
                     </div>
                   </div>
+
+                  {/* Total investido */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: '#1a2332',
+                    color: '#fff',
+                    padding: '12px 20px',
+                    borderRadius: '0 0 6px 6px',
+                    marginTop: 16,
+                    fontWeight: 800,
+                    fontSize: 15,
+                  }}>
+                    <span>TOTAL INVESTIDO NA REGIÃO:</span>
+                    <span contentEditable={editable} suppressContentEditableWarning style={{ outline: 'none' }}>
+                      {inv.total_investido_regiao || formatBR(chartData.reduce((s, d) => s + d.valor, 0))}
+                    </span>
+                  </div>
                 </div>
               );
             })()}
