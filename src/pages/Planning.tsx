@@ -657,7 +657,7 @@ export function Planning() {
 
             <div className="bg-gray-100 overflow-y-auto custom-scrollbar max-h-[75vh]">
               {commStructured ? (
-                <BriefingPreview data={commStructured} editable={true} onDataChange={(d) => setCommStructured(d)} />
+                <BriefingPreview ref={commPrintRef} data={commStructured} editable={true} onDataChange={(d) => setCommStructured(d)} />
               ) : (
                 <div className="p-8">
                   <MarkdownRenderer content={commResult} className="prose prose-lg prose-blue max-w-none text-gray-800" />
@@ -668,18 +668,13 @@ export function Planning() {
         </div>
       )}
 
-      {/* Componentes invisíveis de impressão (react-to-print) */}
+      {/* Componente invisível de impressão — Plano Local (react-to-print) */}
       <PrintableBriefing
         ref={localPrintRef}
         content={localResult}
         title={`Plano de Ação — ${cityName || 'Municipal'}`}
       />
-      <PrintableBriefing
-        ref={commPrintRef}
-        content={commResult}
-        title={`Briefing de Rua — ${commMunicipio || 'Município'}`}
-        structured={commStructured}
-      />
+      {/* Briefing de Rua: imprime direto do BriefingPreview editável (ref={commPrintRef}) */}
 
     </div>
   )

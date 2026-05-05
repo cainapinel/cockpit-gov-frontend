@@ -177,6 +177,38 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
 
     /* ─────────────────── RENDER ─────────────────── */
     return (
+      <>
+      {/* Print styles — quando este componente é a fonte de impressão */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .briefing-root, .briefing-root * { visibility: visible !important; }
+          .briefing-root {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            background: white !important;
+            font-size: 11pt !important;
+            line-height: 1.5 !important;
+            overflow: visible !important;
+            max-height: none !important;
+          }
+          .briefing-root * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .briefing-root table { break-inside: avoid; page-break-inside: avoid; }
+          .briefing-root [contenteditable] {
+            outline: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+          }
+          .custom-scrollbar { overflow: visible !important; max-height: none !important; }
+        }
+      `}</style>
       <div ref={ref} className="briefing-root" style={{ fontFamily: "'Inter', 'Segoe UI', sans-serif", color: "#1a2332", background: "#fff", maxWidth: 794 }}>
         {/* ═══ HEADER ═══ */}
         <div
@@ -600,6 +632,7 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
           )}
         </div>
       </div>
+      </>
     );
   }
 );
