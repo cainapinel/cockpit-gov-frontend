@@ -36,7 +36,7 @@ export interface HistoriaContexto {
   posicao_geografica?: string;
   populacao_alvo?: string;
   curiosidade?: string;
-  desafios_atuais?: string;
+  desafios_atuais?: string[] | string;
 }
 
 export interface ObraMunicipio {
@@ -70,11 +70,13 @@ export interface Investimentos {
 
 export interface EixoProposta {
   nome?: string;
-  proposta?: string;
+  proposta?: string;   // legado
+  itens?: string[];    // novo formato
 }
 
 export interface Propostas {
   eixos?: EixoProposta[];
+  frases_chave?: string[];
 }
 
 export interface EmendaAutor {
@@ -330,12 +332,52 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
                 <span style={{ fontWeight: 800, fontSize: 14, textTransform: "uppercase" }}>CURIOSIDADE: </span>
                 <EditSpan section="historia_contexto" field="curiosidade" value={hc.curiosidade} className="italic text-sm" />
               </div>
-              <div style={{ marginTop: 12 }}>
-                <span style={{ fontWeight: 800, fontSize: 14, textTransform: "uppercase" }}>DESAFIOS ATUAIS: </span>
-                <EditSpan section="historia_contexto" field="desafios_atuais" value={hc.desafios_atuais} className="italic text-sm" />
-              </div>
             </div>
           </div>
+
+          {/* ═══ SEÇÃO 3.5 — DESAFIOS ATUAIS ═══ */}
+          {(() => {
+            const desafios = Array.isArray(hc.desafios_atuais)
+              ? hc.desafios_atuais
+              : hc.desafios_atuais
+                ? hc.desafios_atuais.split(/[.!?]+/).map(s => s.trim()).filter(Boolean)
+                : [];
+            if (desafios.length === 0) return null;
+            return (
+              <div style={{ marginTop: 32 }}>
+                <div style={{
+                  background: "#1a2332",
+                  color: "#fff",
+                  padding: "10px 20px",
+                  borderRadius: "6px 6px 0 0",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  letterSpacing: 1,
+                  textTransform: "uppercase",
+                }}>⚠️ Desafios Atuais</div>
+                <div style={{
+                  border: "1px solid #e0e0e0",
+                  borderTop: "none",
+                  borderRadius: "0 0 6px 6px",
+                  padding: "16px 20px",
+                  background: "#fff",
+                }}>
+                  <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                    {desafios.map((d, i) => (
+                      <li key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start", fontSize: 13, lineHeight: 1.6 }}>
+                        <span style={{ color: "#c0392b", fontWeight: 900, flexShrink: 0, marginTop: 2 }}>▸</span>
+                        <span
+                          contentEditable={editable}
+                          suppressContentEditableWarning
+                          style={{ outline: "none", flex: 1 }}
+                        >{d}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ═══ SEÇÃO 4 — INVESTIMENTOS ═══ */}
           <div style={{ marginTop: 40 }}>
@@ -522,6 +564,12 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
               const EixoCard = ({ idx, style: extraStyle }: { idx: number; style?: React.CSSProperties }) => {
                 const meta = EIXO_META[idx];
                 const eixo = getEixo(idx);
+                // Support both legacy 'proposta' string and new 'itens' list
+                const itens: string[] = eixo.itens?.length
+                  ? eixo.itens
+                  : eixo.proposta
+                    ? [eixo.proposta]
+                    : ["Análise em processamento"];
                 return (
                   <div
                     style={{
@@ -539,13 +587,18 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
                         {eixo.nome || meta.label}
                       </h4>
                     </div>
-                    <p
-                      contentEditable={editable}
-                      suppressContentEditableWarning
-                      style={{ margin: 0, fontSize: 12.5, lineHeight: 1.7, color: "#333", outline: "none" }}
-                    >
-                      {truncate(eixo.proposta || "Análise em processamento")}
-                    </p>
+                    <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                      {itens.map((item, i) => (
+                        <li key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "flex-start", fontSize: 12, lineHeight: 1.6 }}>
+                          <span style={{ color: meta.color, fontWeight: 900, flexShrink: 0, marginTop: 2 }}>•</span>
+                          <span
+                            contentEditable={editable}
+                            suppressContentEditableWarning
+                            style={{ outline: "none", flex: 1, color: "#333" }}
+                          >{item}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 );
               };
@@ -574,6 +627,42 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
               );
             })()}
           </div>
+
+          {/* ═══ FRASES-CHAVE PARA A VISITA ═══ */}
+          {(prop.frases_chave?.length ?? 0) > 0 && (
+            <div style={{ marginTop: 32 }}>
+              <div style={{
+                background: "linear-gradient(135deg, #2c4a7c 0%, #1a2332 100%)",
+                color: "#fff",
+                padding: "10px 20px",
+                borderRadius: "6px 6px 0 0",
+                fontWeight: 800,
+                fontSize: 13,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+              }}>💬 Frases-Chave para a Visita</div>
+              <div style={{
+                border: "1px solid #2c4a7c",
+                borderTop: "none",
+                borderRadius: "0 0 6px 6px",
+                padding: "16px 20px",
+                background: "#f8f9fb",
+              }}>
+                <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                  {prop.frases_chave?.map((frase, i) => (
+                    <li key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start", fontSize: 13.5, lineHeight: 1.6, fontStyle: "italic" }}>
+                      <span style={{ color: "#2c4a7c", fontWeight: 900, flexShrink: 0, fontSize: 16 }}>•</span>
+                      <span
+                        contentEditable={editable}
+                        suppressContentEditableWarning
+                        style={{ outline: "none", flex: 1, fontWeight: 600, color: "#1a2332" }}
+                      >"{frase}"</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
 
           {/* ═══ SEÇÃO 6 — EMENDAS & ORÇAMENTO ═══ */}
           <div style={{ marginTop: 40, paddingBottom: 40 }}>
