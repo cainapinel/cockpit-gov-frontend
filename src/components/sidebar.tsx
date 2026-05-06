@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom"
-import { LayoutDashboard, BarChart3, Inbox, Network, Target, UserCircle } from "lucide-react"
+import { LayoutDashboard, BarChart3, Inbox, Network, Target, UserCircle, Thermometer } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -7,6 +7,7 @@ const navigation = [
   { name: 'Perfil do Candidato', href: '/perfil-candidato', icon: UserCircle },
   { name: 'Gestor de Planos Estratégicos', href: '/planning', icon: Network },
   { name: 'Benchmarking', href: '/benchmark', icon: BarChart3 },
+  { name: 'Termômetro Social', href: '/termometro', icon: Thermometer },
   { name: 'Inbound (Conhecimento)', href: '/inbound', icon: Inbox },
   { name: 'Guidelines (Treinamento)', href: '/guidelines', icon: Target },
 ]

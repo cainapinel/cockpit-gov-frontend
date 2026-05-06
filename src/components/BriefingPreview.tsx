@@ -1,4 +1,4 @@
-import { useState, forwardRef, useCallback } from "react";
+import { useState, forwardRef, useCallback, useMemo } from "react";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -93,6 +93,30 @@ export interface EmendasOrcamento {
   receita_total?: number;
   dependencia_transferencias?: string;
   nota_emendas?: string;
+  /** Mapa campo → nome da fonte, ex: { emendas: "Portal da Transpariência", orcamento: "SICONFI" } */
+  fontes?: Record<string, string>;
+}
+
+export interface DorPrincipal {
+  titulo?: string;
+  descricao?: string;
+  contexto?: string;
+  ranking?: number;
+  crescimento?: string;
+}
+
+export interface TermometroSocial {
+  exists?: boolean;
+  temperatura?: number;
+  nivel_tensao?: string;
+  sentimento_positivo?: number;
+  sentimento_critico?: number;
+  sentimento_neutro?: number;
+  dores?: DorPrincipal[];
+  recomendacoes?: { evitar?: string[]; priorizar?: string[] };
+  alerta_crise?: { nivel?: string; descricao?: string; recomendacoes?: string };
+  mencoes_totais?: number;
+  data_geracao?: string;
 }
 
 export interface BriefingStructured {
@@ -105,6 +129,8 @@ export interface BriefingStructured {
   investimentos?: Investimentos;
   propostas?: Propostas;
   emendas_orcamento?: EmendasOrcamento;
+  termometro_social?: TermometroSocial;
+  thermometer_pending?: boolean;
   fontes?: string[];
 }
 
@@ -177,13 +203,52 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
         {value || "—"}
       </Tag>
     );
+    // ── Citation system ──────────────────────────────────────────
+    // citationMap: nome_da_fonte → número (ex: "IBGE Censo 2022" → 1)
+    const citationMap = useMemo(() => {
+      const map = new Map<string, number>();
+      (local.fontes || []).forEach((src, i) => map.set(src, i + 1));
+      return map;
+    }, [local.fontes]);
 
-    /* ─────────────────── RENDER ─────────────────── */
+    /**
+     * Retorna o número de citação para um campo de uma seção.
+     * Ex: getCite(vg.fontes, "populacao") → 2
+     */
+    const getCite = (
+      sectionFontes: Record<string, string> | undefined,
+      key: string
+    ): number | null => {
+      const src = sectionFontes?.[key];
+      return src ? (citationMap.get(src) ?? null) : null;
+    };
+
+    /** Superscript de citação: [N] em azul */
+    const Cite = ({ n }: { n: number | null }) =>
+      n ? (
+        <sup
+          style={{
+            fontSize: "0.6em",
+            color: "#2c4a7c",
+            fontWeight: 800,
+            marginLeft: 2,
+            letterSpacing: 0,
+          }}
+        >
+          [{n}]
+        </sup>
+      ) : null;
+    // ────────────────────────────────────────────────────────────
+
     return (
       <>
       {/* Print styles — quando este componente é a fonte de impressão */}
       <style>{`
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 14mm 16mm 14mm 16mm;
+          }
           body * { visibility: hidden !important; }
           .briefing-root, .briefing-root * { visibility: visible !important; }
           .briefing-root {
@@ -203,7 +268,74 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
             print-color-adjust: exact !important;
             color-adjust: exact !important;
           }
-          .briefing-root table { break-inside: avoid; page-break-inside: avoid; }
+
+          /* ── Regras de quebra de página (A4, impressão) ──
+
+             REGRA FUNDAMENTAL:
+             break-inside: avoid só em elementos PEQUENOS e atômicos.
+             Em containers grandes, o navegador empurra o bloco inteiro
+             para a próxima página, deixando um espaço em branco enorme.
+             Sequência de página deve fluir naturalmente.
+          */
+
+          /* Header: sempre íntegro (pequeno, cabe em qualquer página) */
+          .briefing-header {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          /* KPI grid: 3 cards em linha — pequeno, nunca cortar */
+          .briefing-kpi-grid {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          /* Linhas de tabela: nível atômico correto para break-inside */
+          .briefing-root table tr {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          /* Cabeçalho de tabela nunca fica sozinho sem a primeira linha */
+          .briefing-root table thead {
+            break-after: avoid !important;
+            page-break-after: avoid !important;
+          }
+
+          /*
+            Blocos decorativos PEQUENOS (card individual de eixo, bloco de
+            desafios com poucos itens, frases-chave, rodapé de fontes).
+            NÃO aplicar em blocos que possam ser maiores que meia página A4.
+          */
+          .briefing-block {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          /* Título de seção: nunca fica orphão no final da página */
+          .briefing-section-title {
+            break-after: avoid !important;
+            page-break-after: avoid !important;
+          }
+
+          /*
+            SEÇÕES QUE SEMPRE INICIAM EM NOVA PÁGINA (A4):
+            3 = História e Contexto
+            4 = Investimento e Impacto
+            5 = Propostas
+            7 = Termômetro Redes Sociais
+            As seções 1 e 2 cabem na primeira página junto com o header.
+          */
+          .briefing-section-new-page {
+            break-before: page !important;
+            page-break-before: always !important;
+          }
+
+          /* Parágrafos: evitar linhas soltas (orphan/widow) */
+          .briefing-root p {
+            orphans: 2;
+            widows: 2;
+          }
+
           .briefing-root [contenteditable] {
             outline: none !important;
             box-shadow: none !important;
@@ -215,6 +347,7 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
       <div ref={ref} className="briefing-root" style={{ fontFamily: "'Inter', 'Segoe UI', sans-serif", color: "#1a2332", background: "#fff", maxWidth: 794 }}>
         {/* ═══ HEADER ═══ */}
         <div
+          className="briefing-header"
           style={{
             background: "linear-gradient(135deg, #1a2332 0%, #2c4a7c 100%)",
             color: "#fff",
@@ -228,25 +361,28 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
 
         {/* ═══ SEÇÃO 1 — VISÃO GERAL ═══ */}
         <div style={{ padding: "32px 48px" }}>
-          <SectionTitle number={1} title="VISÃO GERAL DO MUNICÍPIO" />
+          <div className="briefing-section-title"><SectionTitle number={1} title="VISÃO GERAL DO MUNICÍPIO" /></div>
 
           {/* KPI Cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, margin: "20px 0" }}>
+          <div className="briefing-kpi-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, margin: "20px 0" }}>
             <KpiCard
               value={fmtNum(vg.populacao_censo)}
               label="População CENSO (2022)"
+              cite={getCite(vg.fontes, "populacao")}
               editable={editable}
               onEdit={(v) => update("visao_geral", "populacao_censo", v)}
             />
             <KpiCard
               value={vg.pib_display || "N/D"}
               label="PIB TOTAL"
+              cite={getCite(vg.fontes, "pib")}
               editable={editable}
               onEdit={(v) => update("visao_geral", "pib_display", v)}
             />
             <KpiCard
               value={String(vg.idhm || 0)}
               label={`IDHM (${vg.idhm_classificacao || "N/D"}) ${vg.idhm_ranking_rj || ""}° RJ`}
+              cite={getCite(vg.fontes, "idhm")}
               editable={editable}
               onEdit={(v) => update("visao_geral", "idhm", v)}
             />
@@ -254,14 +390,15 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
 
           {/* Meta line */}
           <p style={{ fontSize: 13, lineHeight: 1.6, color: "#333", margin: "8px 0 0" }}>
-            <b>Área:</b> {vg.area_km2 || 0} km² | <b>Densidade:</b> {vg.densidade_hab_km2 || 0} hab/km² | <b>Motor Econômico:</b>{" "}
+            <b>Área:</b> {vg.area_km2 || 0} km²<Cite n={getCite(vg.fontes, "area")} /> | <b>Densidade:</b> {vg.densidade_hab_km2 || 0} hab/km²<Cite n={getCite(vg.fontes, "area")} /> | <b>Motor Econômico:</b>{" "}
             <EditSpan section="visao_geral" field="motor_economico" value={vg.motor_economico} />
             {" "}<b>Região:</b> {vg.regiao || "N/D"}
           </p>
 
           {/* ═══ SEÇÃO 2 — CENÁRIO POLÍTICO ═══ */}
+          {/* Não usar break-inside:avoid aqui — seção grande, deixar o fluxo decidir */}
           <div style={{ marginTop: 40 }}>
-            <SectionTitle number={2} title="CENÁRIO POLÍTICO (ATORES E DINÂMICA)" />
+            <div className="briefing-section-title"><SectionTitle number={2} title="CENÁRIO POLÍTICO (ATORES E DINÂMICA)" /></div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 20 }}>
               {/* Executivo */}
@@ -302,10 +439,11 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
           </div>
 
           {/* ═══ SEÇÃO 3 — HISTÓRIA E CONTEXTO ═══ */}
-          <div style={{ marginTop: 40 }}>
-            <SectionTitle number={3} title="HISTÓRIA E CONTEXTO" />
+          <div className="briefing-section-new-page" style={{ marginTop: 40 }}>
+            <div className="briefing-section-title"><SectionTitle number={3} title="HISTÓRIA E CONTEXTO" /></div>
 
             <div
+              className="briefing-block"
               style={{
                 borderLeft: "4px solid #2c4a7c",
                 background: "#f5f3ef",
@@ -324,7 +462,7 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
                 <BulletItem label="Posição Geográfica:">
                   <EditSpan section="historia_contexto" field="posicao_geografica" value={hc.posicao_geografica} className="italic text-sm" />
                 </BulletItem>
-                <BulletItem label="População-Alvo:">
+                <BulletItem label="População-Alvo (Perfil e Gênero):">
                   <EditSpan section="historia_contexto" field="populacao_alvo" value={hc.populacao_alvo} className="italic text-sm" />
                 </BulletItem>
               </ul>
@@ -345,7 +483,7 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
                 : [];
             if (desafios.length === 0) return null;
             return (
-              <div style={{ marginTop: 32 }}>
+              <div className="briefing-block" style={{ marginTop: 32 }}>
                 <div style={{
                   background: "#1a2332",
                   color: "#fff",
@@ -381,10 +519,12 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
           })()}
 
           {/* ═══ SEÇÃO 4 — INVESTIMENTOS ═══ */}
-          <div style={{ marginTop: 40 }}>
-            <SectionTitle number={4} title="INVESTIMENTO E IMPACTO" />
-
-            <EditSpan section="investimentos" field="intro" value={inv.intro} tag="p" className="text-sm leading-relaxed mt-4" />
+          <div className="briefing-section-allow-break briefing-section-new-page" style={{ marginTop: 40 }}>
+            {/* Lead block: título + intro juntos */}
+            <div className="briefing-block" style={{ marginBottom: 4 }}>
+              <div className="briefing-section-title"><SectionTitle number={4} title="INVESTIMENTO E IMPACTO" /></div>
+              <EditSpan section="investimentos" field="intro" value={inv.intro} tag="p" className="text-sm leading-relaxed mt-4" />
+            </div>
 
             {/* Tabela de obras do município */}
             {(inv.obras_municipio?.length ?? 0) > 0 && (
@@ -427,7 +567,7 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
               const ticks = Array.from({ length: 6 }, (_, i) => i * tickStep);
 
               return (
-                <div style={{ marginTop: 32, border: '1px solid #e0e0e0', borderRadius: 6, padding: '24px 28px 16px', background: '#fff' }}>
+                <div className="briefing-block" style={{ marginTop: 32, border: '1px solid #e0e0e0', borderRadius: 6, padding: '24px 28px 16px', background: '#fff' }}>
                   {/* Título */}
                   <h4 style={{ fontSize: 15, fontWeight: 700, textAlign: 'center', margin: '0 0 24px', color: '#1a2332' }}>
                     Total de Investimento por Município - {inv.regiao_nome}
@@ -553,8 +693,8 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
           </div>
 
           {/* ═══ SEÇÃO 5 — PROPOSTAS (Cross layout) ═══ */}
-          <div style={{ marginTop: 40 }}>
-            <SectionTitle number={5} title="PROPOSTAS DO PLANO DE GOVERNO (Foco Local)" />
+          {/* ═══ SEÇÃO 5 — PROPOSTAS ═══ */}
+          <div className="briefing-section-allow-break briefing-section-new-page" style={{ marginTop: 40 }}>
 
             {(() => {
               const eixos = prop.eixos || [];
@@ -572,6 +712,7 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
                     : ["Análise em processamento"];
                 return (
                   <div
+                    className="briefing-block"
                     style={{
                       borderLeft: `4px solid ${meta.color}`,
                       padding: "18px 20px",
@@ -604,22 +745,32 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
               };
 
               return (
-                <div style={{ marginTop: 24 }}>
-                  {/* Row 1: Seguro (left) + Próspero (right) */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
-                    <EixoCard idx={0} />
-                    <EixoCard idx={3} />
+                <div>
+                  {/*
+                    "Lead block": título + Row 1 sempre juntos na mesma página.
+                    break-inside: avoid impede que o título fique orphão
+                    e garante que ao menos o primeiro par de cards o acompanhe.
+                  */}
+                  <div className="briefing-block" style={{ marginBottom: 20 }}>
+                    <div className="briefing-section-title" style={{ marginBottom: 20 }}>
+                      <SectionTitle number={5} title="PROPOSTAS DO PLANO DE GOVERNO (Foco Local)" />
+                    </div>
+                    {/* Row 1: Seguro (left) + Próspero (right) */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                      <EixoCard idx={0} />
+                      <EixoCard idx={3} />
+                    </div>
                   </div>
 
                   {/* Row 2: Eficiente (center) */}
-                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+                  <div className="briefing-block" style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
                     <div style={{ width: "55%" }}>
                       <EixoCard idx={1} />
                     </div>
                   </div>
 
                   {/* Row 3: Para Todos (left) + Do Futuro (right) */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                  <div className="briefing-block" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                     <EixoCard idx={2} />
                     <EixoCard idx={4} />
                   </div>
@@ -630,7 +781,7 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
 
           {/* ═══ FRASES-CHAVE PARA A VISITA ═══ */}
           {(prop.frases_chave?.length ?? 0) > 0 && (
-            <div style={{ marginTop: 32 }}>
+            <div className="briefing-block" style={{ marginTop: 32 }}>
               <div style={{
                 background: "linear-gradient(135deg, #2c4a7c 0%, #1a2332 100%)",
                 color: "#fff",
@@ -665,14 +816,16 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
           )}
 
           {/* ═══ SEÇÃO 6 — EMENDAS & ORÇAMENTO ═══ */}
-          <div style={{ marginTop: 40, paddingBottom: 40 }}>
-            <SectionTitle number={6} title="EMENDAS & ORÇAMENTO" />
-
-            {eo.nota_emendas && (
-              <p style={{ fontSize: 12, color: "#888", fontStyle: "italic", margin: "8px 0 0" }}>
-                {eo.nota_emendas}
-              </p>
-            )}
+          <div className="briefing-section-allow-break" style={{ marginTop: 40, paddingBottom: 40 }}>
+            {/* Lead block: título + nota juntos */}
+            <div className="briefing-block" style={{ marginBottom: 4 }}>
+              <div className="briefing-section-title"><SectionTitle number={6} title="EMENDAS & ORÇAMENTO" /></div>
+              {eo.nota_emendas && (
+                <p style={{ fontSize: 12, color: "#888", fontStyle: "italic", margin: "8px 0 0" }}>
+                  {eo.nota_emendas}
+                </p>
+              )}
+            </div>
 
             {(eo.emendas?.length ?? 0) > 0 ? (
               <>
@@ -680,7 +833,7 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
                   <thead>
                     <tr style={{ background: "#1a2332", color: "#fff" }}>
                       <th style={thStyle}>AUTOR</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>VALOR (R$)</th>
+                      <th style={{ ...thStyle, textAlign: "right" }}>VALOR (R$)<Cite n={getCite(eo.fontes, "emendas")} /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -717,27 +870,247 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
             <div style={{ marginTop: 24, padding: "20px 24px", background: "#f5f3ef", borderRadius: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ fontSize: 13, color: "#666", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>Orçamento Municipal</div>
+                  <div style={{ fontSize: 13, color: "#666", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>Orçamento Municipal<Cite n={getCite(eo.fontes, "orcamento")} /></div>
                   <div style={{ fontSize: 24, fontWeight: 900, color: "#1a2332", marginTop: 4 }} contentEditable={editable} suppressContentEditableWarning>{eo.orcamento_municipal || "Dado em levantamento"}</div>
                 </div>
                 {eo.dependencia_transferencias && (
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 13, color: "#666", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>Dependência de Transferências</div>
+                    <div style={{ fontSize: 13, color: "#666", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>Dependência de Transferências<Cite n={getCite(eo.fontes, "orcamento")} /></div>
                     <div style={{ fontSize: 24, fontWeight: 900, color: "#c0392b", marginTop: 4 }}>{eo.dependencia_transferencias}</div>
                   </div>
                 )}
               </div>
             </div>
           </div>
-          {/* ═══ FONTES ═══ */}
+          {/* ═══ FONTES (lista numerada) ═══ */}
+
+          {/* ═══ SEÇÃO 7 — TERMÔMETRO REDES SOCIAIS ═══ */}
+          {(() => {
+            const ts = local.termometro_social;
+            const pending = local.thermometer_pending;
+
+            // Banner de aviso quando não gerado
+            if (pending || !ts?.exists) {
+              return (
+                <div className="briefing-section-new-page" style={{ marginTop: 40 }}>
+                  <div className="briefing-section-title"><SectionTitle number={7} title="TERMÔMETRO REDES SOCIAIS" /></div>
+                  <div style={{
+                    marginTop: 16,
+                    background: "#fff8e1",
+                    border: "2px dashed #f59e0b",
+                    borderRadius: 10,
+                    padding: "24px 28px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 16,
+                  }}>
+                    <span style={{ fontSize: 28 }}>📡</span>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: "#b45309", marginBottom: 6 }}>
+                        Termômetro de Redes Sociais não gerado para {local.municipio || "este município"}
+                      </div>
+                      <div style={{ fontSize: 13, color: "#78350f", lineHeight: 1.6 }}>
+                        Para incluir os dados de sentimento social (dores da região, recomendações e alerta de crise) neste briefing,
+                        gere o Termômetro na seção <strong>Sentimento Social</strong> do menu lateral antes de gerar o briefing.
+                        As análises de sentimento enriquecem significativamente o planejamento de agenda de rua.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Temperatura: cor por nível
+            const temp = ts.temperatura ?? 0;
+            const tempColor = temp >= 70 ? "#c0392b" : temp >= 40 ? "#e67e22" : "#27ae60";
+            const nivelLabel = ts.nivel_tensao || "N/D";
+
+            return (
+              <div className="briefing-section-new-page" style={{ marginTop: 40 }}>
+                <div className="briefing-section-title"><SectionTitle number={7} title="TERMÔMETRO REDES SOCIAIS" /></div>
+                {ts.data_geracao && (
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>Dados coletados em: {ts.data_geracao}</div>
+                )}
+
+                {/* Gauge + Sentimentos */}
+                <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 20, marginTop: 20 }}>
+                  {/* Gauge circular simples */}
+                  <div style={{
+                    background: "#1a2332",
+                    borderRadius: 12,
+                    padding: "28px 16px",
+                    textAlign: "center",
+                    color: "#fff",
+                  }}>
+                    <div style={{ fontSize: 52, fontWeight: 900, color: tempColor, lineHeight: 1 }}>{temp}°</div>
+                    <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7, textTransform: "uppercase", letterSpacing: 1 }}>Temperatura</div>
+                    <div style={{
+                      marginTop: 12,
+                      display: "inline-block",
+                      background: tempColor,
+                      color: "#fff",
+                      padding: "4px 14px",
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: 0.5,
+                    }}>{nivelLabel}</div>
+                    {ts.mencoes_totais != null && (
+                      <div style={{ marginTop: 10, fontSize: 11, opacity: 0.6 }}>{ts.mencoes_totais.toLocaleString("pt-BR")} menções</div>
+                    )}
+                  </div>
+
+                  {/* Barras de sentimento */}
+                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 12 }}>
+                    {[
+                      { label: "Positivo", value: ts.sentimento_positivo ?? 0, color: "#27ae60" },
+                      { label: "Neutro", value: ts.sentimento_neutro ?? 0, color: "#7f8c8d" },
+                      { label: "Crítico", value: ts.sentimento_critico ?? 0, color: "#c0392b" },
+                    ].map(({ label, value, color }) => (
+                      <div key={label}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                          <span>{label}</span>
+                          <span style={{ color }}>{value}%</span>
+                        </div>
+                        <div style={{ height: 8, background: "#e5e7eb", borderRadius: 4, overflow: "hidden" }}>
+                          <div style={{ width: `${value}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.6s" }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dores da Região */}
+                {(ts.dores?.length ?? 0) > 0 && (
+                  <div style={{ marginTop: 28 }}>
+                    <div style={{
+                      background: "#1a2332",
+                      color: "#fff",
+                      padding: "10px 20px",
+                      borderRadius: "6px 6px 0 0",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      letterSpacing: 1,
+                      textTransform: "uppercase",
+                    }}>⚠️ As "Dores" da Região — TOP {ts.dores!.length}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, padding: 16, border: "1px solid #e0e0e0", borderTop: "none", borderRadius: "0 0 6px 6px", background: "#fff" }}>
+                      {ts.dores!.map((dor, i) => (
+                        <div key={i} style={{ background: "#f9f9f9", borderRadius: 8, padding: "14px 16px", borderLeft: `4px solid ${tempColor}` }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: tempColor, textTransform: "uppercase", marginBottom: 4 }}>#{dor.ranking ?? i + 1}</div>
+                          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{dor.titulo}</div>
+                          <div style={{ fontSize: 12, color: "#555", lineHeight: 1.5 }}>{dor.descricao}</div>
+                          {dor.crescimento && (
+                            <div style={{ marginTop: 8, fontSize: 11, fontWeight: 600, color: "#e67e22" }}>
+                              ↗ {dor.crescimento} em menções
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recomendações */}
+                {ts.recomendacoes && (ts.recomendacoes.evitar?.length || ts.recomendacoes.priorizar?.length) ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 20 }}>
+                    {/* Evitar */}
+                    {(ts.recomendacoes.evitar?.length ?? 0) > 0 && (
+                      <div style={{ background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 8, padding: "16px 18px" }}>
+                        <div style={{ fontWeight: 800, fontSize: 13, color: "#c0392b", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                          <span>↓</span> Evitar
+                        </div>
+                        <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                          {ts.recomendacoes.evitar!.map((item, i) => (
+                            <li key={i} style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 12, lineHeight: 1.5, alignItems: "flex-start" }}>
+                              <span style={{ color: "#c0392b", fontWeight: 900, flexShrink: 0 }}>▸</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {/* Priorizar */}
+                    {(ts.recomendacoes.priorizar?.length ?? 0) > 0 && (
+                      <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "16px 18px" }}>
+                        <div style={{ fontWeight: 800, fontSize: 13, color: "#16a34a", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                          <span>↑</span> Priorizar
+                        </div>
+                        <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                          {ts.recomendacoes.priorizar!.map((item, i) => (
+                            <li key={i} style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 12, lineHeight: 1.5, alignItems: "flex-start" }}>
+                              <span style={{ color: "#16a34a", fontWeight: 900, flexShrink: 0 }}>▸</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {/* Alerta de Crise */}
+                {ts.alerta_crise?.nivel && ts.alerta_crise.nivel !== "BAIXO" && (
+                  <div style={{
+                    marginTop: 20,
+                    background: ts.alerta_crise.nivel === "ALTO" ? "#fff5e0" : "#fffbeb",
+                    border: `1px solid ${ts.alerta_crise.nivel === "ALTO" ? "#f59e0b" : "#fcd34d"}`,
+                    borderRadius: 8,
+                    padding: "16px 18px",
+                  }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: "#92400e", marginBottom: 6 }}>
+                      ⚠️ Alerta de Crise — Nível {ts.alerta_crise.nivel}
+                    </div>
+                    <p style={{ margin: "0 0 8px", fontSize: 13, color: "#78350f", lineHeight: 1.6 }}>{ts.alerta_crise.descricao}</p>
+                    {ts.alerta_crise.recomendacoes && (
+                      <p style={{ margin: 0, fontSize: 12, color: "#92400e", fontStyle: "italic" }}>{ts.alerta_crise.recomendacoes}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ═══ FONTES (lista numerada) ═══ */}
           {(local.fontes?.length ?? 0) > 0 && (
-            <div style={{ marginTop: 32, paddingTop: 20, borderTop: "2px solid #e5e5e5", paddingBottom: 32 }}>
-              <h4 style={{ fontSize: 13, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 1, margin: "0 0 12px" }}>FONTES</h4>
-              <ul style={{ margin: 0, padding: "0 0 0 20px", fontSize: 12, color: "#666", lineHeight: 2 }}>
+            <div
+              className="briefing-block"
+              style={{
+                marginTop: 32,
+                paddingTop: 20,
+                borderTop: "2px solid #e5e5e5",
+                paddingBottom: 32,
+              }}
+            >
+              <h4 style={{ fontSize: 12, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 1.2, margin: "0 0 10px" }}>
+                FONTES E REFERÊNCIAS
+              </h4>
+              <ol style={{ margin: 0, padding: "0 0 0 0", listStyle: "none" }}>
                 {local.fontes?.map((f, i) => (
-                  <li key={i}>{f}</li>
+                  <li
+                    key={i}
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      marginBottom: 4,
+                      fontSize: 11,
+                      color: "#555",
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    <span
+                      style={{
+                        minWidth: 22,
+                        fontWeight: 800,
+                        color: "#2c4a7c",
+                        flexShrink: 0,
+                      }}
+                    >
+                      [{i + 1}]
+                    </span>
+                    <span>{f}</span>
+                  </li>
                 ))}
-              </ul>
+              </ol>
             </div>
           )}
         </div>
@@ -798,11 +1171,13 @@ const BulletItem = ({ label, children }: { label: string; children: React.ReactN
 const KpiCard = ({
   value,
   label,
+  cite,
   editable,
   onEdit,
 }: {
   value: string;
   label: string;
+  cite?: number | null;
   editable: boolean;
   onEdit: (v: string) => void;
 }) => (
@@ -828,7 +1203,14 @@ const KpiCard = ({
     >
       {value}
     </div>
-    <div style={{ fontSize: 13, color: "#444", marginTop: 4, fontWeight: 500 }}>{label}</div>
+    <div style={{ fontSize: 13, color: "#444", marginTop: 4, fontWeight: 500 }}>
+      {label}
+      {cite != null && (
+        <sup style={{ fontSize: "0.6em", color: "#2c4a7c", fontWeight: 800, marginLeft: 2 }}>
+          [{cite}]
+        </sup>
+      )}
+    </div>
   </div>
 );
 

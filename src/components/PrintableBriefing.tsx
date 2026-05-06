@@ -21,6 +21,11 @@ export const PrintableBriefing = forwardRef<HTMLDivElement, PrintableBriefingPro
       <div ref={ref} className="printable-briefing">
         <style>{`
           @media print {
+            @page {
+              size: A4 portrait;
+              margin: 14mm 16mm 14mm 16mm;
+            }
+
             /* Reset para impressão */
             body * { visibility: hidden; }
             .printable-briefing, .printable-briefing * { visibility: visible; }
@@ -41,14 +46,56 @@ export const PrintableBriefing = forwardRef<HTMLDivElement, PrintableBriefingPro
               color-adjust: exact !important;
             }
 
-            /* Evitar quebras dentro de blocos */
-            .printable-briefing table { break-inside: avoid; page-break-inside: avoid; }
-            .printable-briefing .briefing-root { padding: 0 !important; }
-            
-            /* KPI cards — manter background no print */
-            .printable-briefing div[style*="background: rgb(232"] {
-              -webkit-print-color-adjust: exact !important;
+            /* ── Regras de quebra de página A4 ──*/
+
+            /* Seções que sempre iniciam em nova página */
+            .printable-briefing .briefing-section-new-page {
+              break-before: page !important;
+              page-break-before: always !important;
             }
+
+            /* Header sempre íntegro */
+            .printable-briefing .briefing-header {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
+
+            /* KPI grid: compacto, nunca cortar */
+            .printable-briefing .briefing-kpi-grid {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
+
+            /* Linhas de tabela: nível atômico correto */
+            .printable-briefing table tr {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
+            /* Cabeçalho de tabela nunca fica sozinho */
+            .printable-briefing table thead {
+              break-after: avoid !important;
+              page-break-after: avoid !important;
+            }
+
+            /* Blocos decorativos pequenos */
+            .printable-briefing .briefing-block {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
+
+            /* Título de seção nunca fica orphão no final da página */
+            .printable-briefing .briefing-section-title {
+              break-after: avoid !important;
+              page-break-after: avoid !important;
+            }
+
+            /* Parágrafos: evitar linhas soltas */
+            .printable-briefing p {
+              orphans: 2;
+              widows: 2;
+            }
+
+            .printable-briefing .briefing-root { padding: 0 !important; }
           }
 
           /* Estilo da tela (componente invisível) */

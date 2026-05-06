@@ -12,9 +12,9 @@ export const api = axios.create({
   }
 });
 
-// Request interceptor to attach JWT token and enforce trailing slashes
+// Request interceptor: attach JWT + enforce trailing slashes + proactive refresh
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
     // Enforce Trailing Slash para evitar Redirecionamento 301 no Django (Quebra de CORS)
     if (config.url && !config.url.endsWith('/')) {
         if (!config.url.includes('?')) {
@@ -27,27 +27,74 @@ api.interceptors.request.use(
         }
     }
 
-    // We would normally get this from a Zustand store or AuthContext
+    // Attach access token
     const token = localStorage.getItem('cockpit_token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor to force logout on 401
+// ── Controle de refresh concorrente ──────────────────────────────────────────
+let _refreshPromise: Promise<string | null> | null = null;
+
+async function attemptRefresh(): Promise<string | null> {
+  if (_refreshPromise) return _refreshPromise;
+
+  _refreshPromise = (async () => {
+    const refreshTk = localStorage.getItem('cockpit_refresh');
+    if (!refreshTk) return null;
+    try {
+      // Chamada direta (sem interceptor para evitar loop)
+      const res = await axios.post(
+        `${API_HOST}/token/refresh/`,
+        { refresh: refreshTk },
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+      const newAccess  = res.data.access  as string;
+      const newRefresh = (res.data.refresh ?? refreshTk) as string;
+      localStorage.setItem('cockpit_token',   newAccess);
+      localStorage.setItem('cockpit_refresh', newRefresh);
+      api.defaults.headers.common['Authorization'] = `Bearer ${newAccess}`;
+      return newAccess;
+    } catch {
+      return null;
+    } finally {
+      _refreshPromise = null;
+    }
+  })();
+
+  return _refreshPromise;
+}
+
+// Response interceptor: on 401 → try refresh once → retry → logout
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/token/')
+    ) {
+      originalRequest._retry = true;
+      const newToken = await attemptRefresh();
+      if (newToken) {
+        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+        return api(originalRequest);
+      }
+      // Refresh falhou → força logout
       localStorage.removeItem('cockpit_token');
-      // Prevent recursive redirects if already on login
+      localStorage.removeItem('cockpit_refresh');
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
     }
+
     return Promise.reject(error);
   }
 );

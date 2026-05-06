@@ -25,7 +25,7 @@ export function Login() {
 
     try {
       const response = await api.post('/token/', { username, password });
-      login(response.data.access);
+      login(response.data.access, response.data.refresh);
       // Wait for auth context state to trickle down
       setTimeout(() => navigate('/'), 100);
     } catch (err: any) {

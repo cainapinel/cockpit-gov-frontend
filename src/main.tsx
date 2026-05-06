@@ -9,6 +9,7 @@ import { Inbound } from './pages/Inbound'
 import { Login } from './pages/Login'
 import { Guidelines } from './pages/Guidelines'
 import { CandidateProfile } from './pages/CandidateProfile'
+import { Thermometer } from './pages/Thermometer'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import './index.css'
 
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <Route path="/planning" element={<Planning />} />
               <Route path="/guidelines" element={<Guidelines />} />
               <Route path="/perfil-candidato" element={<CandidateProfile />} />
+              <Route path="/termometro" element={<Thermometer />} />
             </Route>
           </Route>
         </Routes>
