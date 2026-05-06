@@ -92,6 +92,7 @@ export interface EmendasOrcamento {
   orcamento_municipal?: string;
   receita_total?: number;
   dependencia_transferencias?: string;
+  nota_emendas?: string;
 }
 
 export interface BriefingStructured {
@@ -157,13 +158,13 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
       field,
       value,
       className = "",
-      tag: Tag = "span",
+      tag: Tag = "span" as React.ElementType,
     }: {
       section: keyof BriefingStructured;
       field: string;
       value?: string;
       className?: string;
-      tag?: keyof JSX.IntrinsicElements;
+      tag?: React.ElementType;
     }) => (
       <Tag
         contentEditable={editable}
@@ -559,7 +560,6 @@ export const BriefingPreview = forwardRef<HTMLDivElement, BriefingPreviewProps>(
               const eixos = prop.eixos || [];
               // Map eixos to fixed positions: 0=Seguro, 1=Eficiente, 2=ParaTodos, 3=Próspero, 4=Futuro
               const getEixo = (idx: number) => eixos[idx] || { nome: EIXO_META[idx]?.label, proposta: "Análise em processamento" };
-              const truncate = (text: string) => text && text.length > 325 ? text.slice(0, 322) + "..." : text;
 
               const EixoCard = ({ idx, style: extraStyle }: { idx: number; style?: React.CSSProperties }) => {
                 const meta = EIXO_META[idx];
@@ -836,7 +836,7 @@ const KpiCard = ({
    STYLES
    ═══════════════════════════════════════════════════════════════ */
 
-const EIXO_COLORS = ["#c0392b", "#27ae60", "#8e44ad", "#2d8a4e", "#2c3e8f"];
+// EIXO_COLORS removido — cores definidas em EIXO_META
 
 const EIXO_META = [
   { label: "Estado Seguro", color: "#c0392b", icon: "🛡️" },
